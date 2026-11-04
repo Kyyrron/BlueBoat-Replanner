@@ -1,0 +1,66 @@
+# BlueBoat-Replanner configuration: every default, its unit and category (MATH §15).
+# Categories: U user decision, R repository default/fact, L literature-motivated,
+# P placeholder, D design choice. Unknown keys raise. Overrides go under `replanner:`;
+# a mission file's `config:` block overrides these again (same keys).
+replanner:
+  speed_mps: 0.5         # [m/s] U — user 2026-11-04
+  range_m: 20.0        # [m] U — synthesis §8.5; brief Q8
+  sensor_depth_m: 0.22        # [m] R — root CLAUDE.md §4.3
+  planning_depth_m: null        # [m] U — per mission (MATH §2.3)
+  grazing_floor: false       # [-] U — brief §3 (off); NOAA HSSD 2025.0.01 §8.3 (option) (swept)
+  grazing_ratio: 0.08        # [-] L — NOAA HSSD 2025.0.01 §8.3
+  r_near_m: 6.0         # [m] P — brief §3 (swept)
+  spacing_factor: 0.8         # [-] R — synthesis §8.5 (swept)
+  spacing_check_step_m: 0.05        # [m] D — MATH §2.2
+  spacing_bisect_iterations: 40          # [-] D — MATH §2.2
+  margin_m: 2.0         # [m] P — brief Q9
+  r_turn_m: 3.0         # [m] P — E-23 (field 1.5-6 m) (swept)
+  t_settle_s: 2.0         # [s] P — brief §8.5
+  geom_step_m: 0.05        # [m] D — MATH §3
+  pass1_direction: long_axis   # [-] D — MATH §3.2; C2 protocol
+  interlace: auto        # [-] D — MATH §3.2; C2 protocol
+  connection_retries: 10          # [-] D — MATH §3.2
+  connection_shorten_m: 0.5         # [m] D — MATH §3.2
+  min_leg_m: 1.0         # [m] D — MATH §3.2
+  sample_ds_m: 0.25        # [m] R — MCS designer sampling.py l.66
+  max_samples_per_request: 19000       # [-] D — Control cap 20 000 (E-08)
+  pd_plateau: 0.7         # [-] P — brief §8.2 (Belief's default) (swept)
+  pd_r_lo_m: 3.0         # [m] P — brief §8.2
+  pd_r_hi_m: 25.0        # [m] P — brief §8.2
+  aspect_agnostic: false       # [-] D — brief §4.5 (C4_iso)
+  clutter_f: 0.2         # [-] P — [OPEN] O-5 (swept)
+  kappa: 1.0         # [-] U — brief §5 Q1 (swept)
+  lam: 0.5         # [-] U — brief §5 Q1 (swept)
+  contact_exclusion_sigma: 3.0         # [-] D — MATH §9
+  calibration_iterations: 60          # [-] D — MATH §9.1
+  r_star_m: 10.0        # [m] U — brief §5 Q7 (placeholder) (swept)
+  l_min_m: 10.0        # [m] P — MATH §10.2 (swept)
+  revisit_depth_radius_m: 10.0        # [m] D — MATH §2.3
+  k1: 5           # [-] D — MATH §11.2
+  k2: 5           # [-] D — MATH §11.4
+  epsilon_j: 0.02        # [exp. targets] P — closure C (swept)
+  lookahead_depth: 2           # [-] D — brief §8.5 (C4_depth1 = 1)
+  t_lat_s: 10.0        # [s] P — [OPEN] L-B5
+  p_res: 0.05        # [-] P — brief §8.6 (swept)
+  n_max: 3           # [-] P — brief §8.6 (swept)
+  delta: 0.02        # [-] P — brief §8.6 (swept)
+  rho_rev: 0.5         # [-] P — brief §8.6 (swept)
+  rho_floor: 0.0         # [1/s] P — MATH §12
+  t_decide_s: 2.0         # [s] D — brief §9.1
+  latency_margin_s: 2.0         # [path s] D — closure G
+  answer_timeout_s: 5.0         # [s] D — closure G
+  reconcile_timeout_s: 10.0        # [s] D — closure G
+  belief_max_age_s: 5.0         # [s] D — contract C-2 (~1 Hz)
+  progress_max_age_s: 1.0         # [s] D — E-11 (10 Hz)
+  progress_send_max_age_s: 0.2         # [s] D — closure G
+  odom_max_age_s: 1.0         # [s] D — DESIGN §8
+  transform_jump_m: 0.5         # [m] D — DESIGN §4
+  start_timeout_s: 60.0        # [s] D — DESIGN §7
+  stop_retries: 3           # [-] D — closure D
+  stop_hold_s: 1.0         # [path s] D — closure D
+  classes:                  # planner aspect model, placeholders until E3 (P) — brief §8.2
+    block: {m: 4, w_deg: 20.0, a: 0.4, s: 1.0}
+    pipe: {m: 2, w_deg: 10.0, a: 0.1, s: 1.0}
+    cage: {m: 4, w_deg: 25.0, a: 0.3, s: 0.9}
+    tyre: {m: 0, w_deg: 0.0, a: 1.0, s: 0.6}
+    plate: {m: 0, w_deg: 0.0, a: 1.0, s: 0.3}

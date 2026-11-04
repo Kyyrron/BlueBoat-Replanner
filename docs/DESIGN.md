@@ -1,0 +1,387 @@
+# BlueBoat-Replanner — design
+
+Status: **built, 2026-11-04 (cloud session REPLAN-1).** The design was revised after the Phase 1
+consistency review (`PHASE1_CLOSURE.md`) and approved by the user ("move on to the next part of the
+work"). Phases 2–4 implemented it:
+- the ROS-free core and the dev loop are tested offline;
+- the ROS node and the emulator node are driven only through stand-in rclpy modules (gate [24]),
+  and have **never run under ROS** (`LOCAL_CHECKLIST.md` L-R, L-E, L-G).
+
+Where this document and the code disagree, the code wins: fix the document.
+
+Companion documents:
+- the mathematics: `MATH.md`;
+- every interface: `topics.md`;
+- the Belief contract, field by field: `CONTRACT_CONSUMED.md`;
+- the C2 baseline tuning procedure: `C2_TUNING_PROTOCOL.md`.
+
+Sections changed at closure are marked **(closure X)**.
+
+**Labels** (brief §16.2): [DECIDED] [CODE] [DOC] [TEST] [DEMO] [ASSUMPTION] [OPEN], plus
+[NOT AVAILABLE] for comparisons with a v1 oracle that does not exist.
+
+**Evidence ids:**
+- `E-nn` and `L-nn` — `EVIDENCE_REGISTER.md`;
+- `D-xx` — `PHASE0_VERIFICATION.md` §3;
+- `Q-n` — `QUESTIONS_PHASE0.md`.
+
+## 1. Purpose and scope
+
+At decision points during a run, the module decides whether the boat:
+- continues its survey;
+- revisits a contact from a chosen viewing bearing; or
+- flies a coverage line out of order.
+
+It makes the boat do it within the same run, through Control's live path update. It also generates
+every survey condition: single pass, two-pass orthogonal, append-on-completion, the informative
+replanner and its ablations. All of them go through **one** coverage generator and **one**
+executor, so every condition pays the same execution costs (CM-12, synthesis §7.3; E-54, E-65).
+
+**Deliberately not built** (brief §11):
+- a message package;
+- a GTSP solver, a POMDP, learning;
+- a GUI;
+- a second path server or any path-change mechanism of our own;
+- anything that moves the real boat without an operator-started run.
+
+## 2. Decisions
+
+| # | Decision | Label | Source |
+|---|---|---|---|
+| 1 | The path is changed mid-run only through `/blueboat/update_path` | [CODE] | E-01…E-19 |
+| 2 | Inputs are the brief's (§6.2): the BeliefGrid (only target evidence), `/blueboat/odom`, the mission file, Control's progress, events and answers, and an optional read-only Belief-config cross-check. Never online: detections, sonar, simulation ground truth, `/sim/*` | [DECIDED] user 2026-11-04 | brief §4.3, §6.2, §16.1; E-72 |
+| 3 | Mission areas come from the mission file (WGS-84 polygons, brief §6.4), converted with Belief's published datum | [DECIDED] | brief Q9; D-A1 |
+| 4 | Survey speed **0.5 m/s** in every condition | [DECIDED] user | E-70 |
+| 5 | Swath = **one side**. Line spacing is a function of range: W = √(R² − h²) − r_near (brief §3); the NOAA grazing term is an option, **off by default** (closure H) | [DECIDED] (one side, function of range, brief §3); [ASSUMPTION] (option) | E-71, L-01, L-02 |
+| 6 | Append-on-completion = C3, built first. The policy architecture is modular, so that a later policy may interrupt a line | [DECIDED] user | E-73 |
+| 7 | C4_rand uses a bearing table pre-drawn in `eval/`. No online randomness | [DECIDED] user | E-74 |
+| 8 | Plans are made in Belief's map frame M; exported paths are in Control's `world` frame W; one conversion module | [DOC] brief §6.5; C-5 | E-10, E-33 |
+| 9 | Turns are Dubins arcs (r_turn 3 m), with lead-ins for settling. No stationary corners and **no reliance on turning in place**; the first path is a Dubins manoeuvre from the hold pose (closure E) | [ASSUMPTION] (values); [DOC] (field radii 1.5–6 m) | E-23, E-41 |
+| 10 | Decisions are taken at decision points: the ends of coverage legs and revisit bodies (brief Q10). Mid-line change points only for a policy that declares `may_interrupt` | [DECIDED] | — |
+| 11 | One controller for every condition; PID by default | [ASSUMPTION] default (Q-14) | E-24, E-25 |
+| 12 | Planner sensor parameters are labelled placeholders; an aspect-agnostic variant exists | [DOC] brief §4.5 | A-01 |
+| 13 | Planner model ≠ world model is configuration, not code | [DOC] brief §4.6 | — |
+| 14 | Belief's core and Control's `path_update.py` are imported only in `eval/` and `test/`, behind guards | [ASSUMPTION] default (Q-11) | CM-3 |
+| 15 | A single emulator in `eval/`, run instead of Perception. Its output topic is [OPEN] (Q-9) | [ASSUMPTION] + [OPEN] | D-B1 |
+| 16 | Dev-loop results are development evidence only (synthesis §6.2 ⚠) | [DOC] | D-W1 |
+| 17 | Class mapping `concrete_block`→block, `pipe_pvc`→pipe, `mesh_crate`→cage, `tire_car`→tyre. Plate has no simulator class | [ASSUMPTION] default (Q-15) | E-38 |
+| 18 | No GTSP: nearest-feasible ordering plus a two-step lookahead | [DECIDED] brief §5, §8.5 | D-L2 |
+| 19 | The C2 tuning protocol is frozen before any C3/C4 evaluation result (`C2_TUNING_PROTOCOL.md`) | [ASSUMPTION] default; CM-12 | — |
+| 20 | Comparisons with the brief §9.5 prototype or any Belief v1 | [NOT AVAILABLE] | E-75 |
+| 21 | **C2, C3 and the C4 family all start from the C2 plan.** C4 with no detour equals C2; C3 inserts its revisits at the pass-1/pass-2 boundary; C1 is pass 1 only (closure B) | [ASSUMPTION] design choice, approved 2026-11-04 | MATH §10.1 |
+| 22 | Candidates are valued on the **whole executed tail over the remaining budget** (detour, rejoin, truncated remainder); the second lookahead step is chosen by the same combined value (closure B, C) | [ASSUMPTION] design choice, approved 2026-11-04 | MATH §10–§11 |
+| 23 | Background residual calibrated on the class-weighted mixture (closure A) | [ASSUMPTION] design choice (corrects the brief's formula, valid only for s ≡ 1), approved 2026-11-04 | MATH §9.1 |
+| 24 | Manual override or E-STOP **disarms** the replanner; it resumes only after an explicit `~/start` and the re-arm checks (closure D) | [DOC] brief §7.2 ("stops on … manual override or E-STOP") | §7 |
+
+## 3. Structure (layout copied from the existing modules)
+
+An ament_python package one level below the git root, like BlueBoat-Perception and
+BlueBoat-SSS-Sim.
+
+```
+BlueBoat-Replanner/                       (as built, Phases 2-4)
+├── .claude/  CLAUDE.md · TODO.md · rules/{core-purity,models-apart,frames-trajectory}.md
+│             settings.json (Stop hook → tools/smoke_gate.sh)
+├── docs/     DESIGN, MATH, topics, CONTRACT_*, REQUESTS, LOCAL_CHECKLIST, PHASE0/1 records,
+│             C2_TUNING_*, DEVLOOP, INTEGRATION, REPORT, HANDOVER_CLOUD, REPLANNER_BRIEF (read-only)
+├── results/  devloop_2026-11-04/{c2_tuning, main, budget_sweep, budget_merged, timing_uncontended}
+│             (dev-loop outputs: preliminary, reference-belief-conditional; DEVLOOP §5)
+└── blueboat_replanner/                   package root (ament_python); gate: python3 -m test.smoke_test
+    ├── package.xml · setup.py · setup.cfg · resource/
+    ├── blueboat_replanner/
+    │   ├── core/   ROS-free, deterministic (numpy + stdlib)
+    │   │   config · geo (MCS copy, frames) · areas · spacing · dubins · routing · coverage
+    │   │   plan (Segment/Plan, sampling, ControlPathMirror, transform_segments) · validate
+    │   │   evidence (contract validation) · candidates (revisit legs) · mission_plan
+    │   │   model (sensor model) · value (posterior, background calibration) · looks (predictor)
+    │   │   sequence (J / J2 evaluator) · policy/{base, coverage (C1, C2), append (C3),
+    │   │   informative (C4 family)}
+    │   ├── io/     mission · trajectory_yaml · recordlog (data root, O_EXCL run folders) — PyYAML here
+    │   ├── ros/    adapters (the ONE field-name table, ROS-free) · executor (ROS-free; the only
+    │   │           code that knows Control's mechanism) · replanner_node (the only rclpy code)
+    │   └── eval/   belief_port · belief_reference (STAND-IN) · world (+ emulator, calibrator)
+    │               control_stub · devloop · runner · emulator_node     ← the only randomness
+    ├── config/   replanner.yaml (every default + category) · mission_example.yaml
+    ├── launch/   replanner_launch.py · emulator_launch.py (launch imports optional)
+    └── test/     smoke_test.py (sections [1]-[24], exit != 0 on failure; [24] = the two nodes
+                  and both launch files over stand-in rclpy / launch modules)
+```
+
+**Core purity**, enforced by the gate's import sweep:
+- no `rclpy`, Qt, OpenCV, torch, `random`, `time` or `numpy.random` in `core/`, `io/` or `ros/`
+  (`ros/` uses rclpy's clock only through the node);
+- `Policy.on_epoch` is pure.
+
+## 4. Frames
+
+| Frame | Definition | Source |
+|---|---|---|
+| M (map) | ENU about Belief's datum (`datum_lat`, `datum_lon`); metres; yaw in rad, CCW from East | C-3, C-5 |
+| W (world) | Control's frame = `/blueboat/odom` local ENU. Origin: the launch point (real); Gazebo origin = spawn = world `geo_anchor` (sim) | E-02, E-19, E-37 |
+| WGS-84 | mission areas, archive anchors | brief §6.4 |
+
+**Conversions** (`core/geo.py`, one place):
+- **WGS-84 → M:** the MCS pair, copied verbatim; bit-identity is tested against MCS's file.
+- **W → M:** `x_M = R(θ) x_W + t`, from `odom_to_map_*`. M → W is the inverse, with
+  `yaw_W = yaw_M − θ`.
+- **Plans** are made in M. **Requests** are sent in W.
+- **Junctions** are computed in W from `ControlPathMirror`, so continuity never depends on the
+  transform staying constant.
+- **Round trip** tested to 1e-9 m.
+- **Transform drift:** a jump larger than `transform_jump_m` (0.5 m) between decisions is logged.
+  Already-sent path is untouched.
+- **Datum or geometry change** between snapshots: `ContractError`, and the mission stops.
+
+## 5. Execution model — the path-change transaction
+
+Control's mechanism is used as documented (`BlueBoat-Control/docs/PATH_UPDATE_INTERFACE.md`;
+E-01…E-19). **`ros/executor.py` is the only code that knows it.**
+- Its offline twin `eval/control_stub.py` enforces the same rules. It is written from the interface
+  document only, like Control's demo client.
+- When importable, Control's ROS-free `path_update.PathUpdater` cross-checks it in the gate.
+
+### 5.1 One run (closure B, E)
+
+1. **Ready** when all of these hold:
+   - progress `state == awaiting_path` with `hold`;
+   - the service is available;
+   - the grid is valid (`odom_to_map_valid`);
+   - the mission is valid;
+   - `~/start` has been called.
+2. **First path** (MATH §3.5):
+   - an initial Dubins manoeuvre from (`hold.x`, `hold.y`, ψ₀), where ψ₀ is the fresh odometry yaw,
+     else `hold.yaw`, to the first coverage leg;
+   - then the condition's plan: C1 = pass 1; **C2, C3, C4 = the C2 plan**;
+   - converted to W, sampled, and sent with `change_point = NaN`, `id = r<run>-0000`.
+
+   The design does not rely on in-place turning (closure E). A hold outside F_margin, or no
+   feasible manoeuvre, is a mission error at `~/start`.
+3. **Follow.** Track `tau`, `following_id`, `end_reached`. The plan's t axis is Control's t axis.
+4. **Decision point.** For a policy with epochs, the trigger (§5.2) fires before a decision point.
+   - The policy returns CONTINUE, REPLACE(tail) or STOP.
+   - REPLACE builds the executed tail (MATH §10.2): detour ⊕ rejoin ⊕ remaining K, truncated at the
+     budget.
+5. **Change point.** c = the decision point's end time. The new tail starts at the mirror pose at c,
+   with the mirror's tangent, which satisfies 0.20 m / 10° by construction (E-07).
+6. **Always the whole remainder.** Every request carries the full intended remainder up to the
+   budget end. Without further decisions, the mission completes as planned.
+7. **End.** On `end_reached` with nothing to append, the run is `done`, and Control holds the last
+   pose (E-17).
+
+### 5.2 Timing, requests, answers, refusals (closure G)
+
+**Timing.** Verified Control bounds are separated from our configurable margins:
+
+| Quantity | Value | Kind |
+|---|---|---|
+| lead_min | max(path_time + 0.1 s, 3 m / U_d) = 6.0 s for PID/LoS at 0.5 m/s | **Control, verified** (E-06) |
+| `min_change_point` | τ + lead_min, at 10 Hz and after every answer | **Control, verified** (E-11) |
+| τ rate | ≤ 1 path-s per s (governor), so path-second margins are conservative in wall time | **Control, verified** (E-14) |
+| Handling time; round trip | ≤ 2.2 ms; ≤ 2.9 ms | Control **[DOC]**, Gazebo-measured (E-24) |
+| T_decide | 2 s, a compute budget, not a guarantee | ours |
+| latency_margin | 2 path-s | ours |
+| answer_timeout; reconcile_timeout | 5 s; then 10 s | ours |
+
+**Requests.**
+1. **Trigger.** A decision fires when τ ≥ t_dp − (lead_min + T_decide + latency_margin), with
+   lead_min from the latest progress and t_dp the decision point.
+2. **Pre-send check.** With the latest progress (age ≤ 0.2 s), send only if
+   c ≥ `min_change_point` + latency_margin. Otherwise **do not send**: log `missed_lead`, and
+   re-decide at the next decision point. Acceptance is never assumed.
+3. **One request outstanding.** No decision while one is pending.
+4. **Answer timeout** (5 s) — reconcile from progress and events:
+   - `active_id == id` → accepted;
+   - `last_answer.id == id` with `accepted == false` → refused;
+   - neither within 10 s more → `failed`. Control keeps the last accepted path.
+5. **Refusals.** Never a blind retry.
+
+   | Refusal | Category | Response |
+   |---|---|---|
+   | `operator_override`, `not_ready` | state | `disarmed` (§7) |
+   | `no_run` | state | `run_ended` |
+   | `mission_owned` | state | `failed` (the run is not replanner-owned) |
+   | `lead_too_short` | geometry | re-plan with c = the **next** decision point, once per epoch |
+   | `discontinuous_position`, `discontinuous_heading` | geometry | re-evaluate the mirror at c and rebuild once; a second occurrence → `failed` |
+   | `bad_request`, `duplicate_id`, `too_few_points`, `too_many_points`, `not_finite`, `time_not_increasing`, `time_out_of_range`, `too_fast`, `heading_incoherent`, `change_point_outside` | request | `failed` (a defect here) |
+
+6. **The mirror changes only on acceptance.** A refusal never mutates the accepted-plan state.
+7. **Logging.** Every request and answer is logged in the decision topic, `requests.jsonl`, and
+   Control's own `-pathlog.csv` (E-13).
+
+### 5.3 Stop (closure D)
+
+`~/stop` asks for a truncation at the earliest feasible c (≥ `min_change_point` +
+latency_margin). It is two samples at the mirror pose (x_c, y_c, yaw_c), at t = c and c + 1 s.
+Checked against Control's code:
+- zero displacement, so the segment is not "moving" and gets no coherence check;
+- position gap 0;
+- heading equal to the old path's, so it passes the 10° check.
+
+| Situation | Status | Boat |
+|---|---|---|
+| `~/stop` received | `stop_requested` | follows the current path |
+| Truncation accepted | `stop_accepted` (reports c and the stop pose) | follows the old path until τ = c, then holds |
+| progress `end_reached` with `active_id` = the stop id | `stopped_holding` | holds the stop pose (Control's station keeping, E-17) |
+| Truncation refused | `stop_rejected`: "**STOP NOT IN EFFECT** — the boat continues the previous path; use E-STOP, manual target or run stop" | follows the old path |
+| `cleared` / `no_run` | `run_ended` | per Control (idle, zero thrust); **not** "holding" |
+
+**Retries.** At most 3, then `stop_rejected` stays, with the reasons:
+- `lead_too_short`: a fresh c;
+- `discontinuous_*`: re-read the mirror once;
+- state refusals: wait until progress is `following` again. A stop is an operator command, not
+  autonomous replanning.
+
+Only `stopped_holding` asserts that the boat holds.
+
+## 6. Policies and decision points (modular, user 2026-11-04)
+
+```
+Policy.on_epoch(ctx: EpochContext) -> Decision
+  ctx      : belief arrays, pending looks, mirror + plan state (K), tau, c, budget state, mission, config
+  Decision : action ∈ {CONTINUE, REPLACE(tail), STOP}, rules_fired, scored[]
+Policy.decision_points(plan) -> list[DecisionPoint]     # default: ends of `line` and `body` segments
+Policy.may_interrupt -> bool                            # mid-segment change points allowed
+Policy.extra_triggers() -> [Periodic(dt) | OnNewContact]  # for interrupting policies
+```
+
+- **Default decision points.** The ends of `line` (coverage leg) and `body` (revisit leg) segments.
+  Never `connection`, `transit` or `rejoin`.
+  - With PID/LoS at 0.5 m/s, lead_min is 6.0 s, so the trigger fires about 10 s (≈ 5 m) before the
+    decision point.
+  - A leg shorter than that window passes its decision point without a decision (`missed_lead`).
+- **Interrupting policies.** `Periodic` or `OnNewContact` (a new uid) fire at the earliest feasible
+  c on the current segment. The unflown part of an interrupted line stays in K as a RECOVER item.
+
+| Condition | Policy | Initial plan | Decisions | `may_interrupt` | In E4 |
+|---|---|---|---|---|---|
+| C1 | `CoveragePolicy(passes=1)` | pass 1 | none | no | reference only |
+| C2 | `CoveragePolicy(passes=2)` | C2 plan | none | no | **baseline** |
+| C3 | `AppendOnCompletionPolicy` | C2 plan | one: the end of pass 1's last leg (if missed, the run continues as C2; logged) | no | yes |
+| C4 | `InformativePolicy` | C2 plan | every default decision point | no (brief Q10) | yes |
+| C4_live | `InformativePolicy(may_interrupt=True)` — **v1: the flag only; no `OnNewContact` trigger, not run** | C2 plan | as C4 | flag | no |
+| C4_iso | `InformativePolicy`, A ≡ 1 | C2 plan | default | no | ablation |
+| C4_rand | `InformativePolicy`, bearings from `config.c4_rand.bearing_table` | C2 plan | default | no | ablation |
+| C4_degraded, C4_depth1 | dev loop only | C2 plan | default | no | no |
+
+**Build order** (user: append-on-completion first):
+1. C1, C2, C3, with the executor and the dev loop;
+2. C4 and its ablations.
+
+C1 and C2 send exactly one request.
+
+## 7. State machine (closure D)
+
+| State | Entered when | Leaves to |
+|---|---|---|
+| `idle` | node start; after a terminal state with a new mission | `waiting` on `~/start` |
+| `waiting` | `~/start` accepted | `starting` when ready; `failed` after `start_timeout_s` (60 s), naming what is missing |
+| `starting` | first path sent | `running` on acceptance; `failed` on a request refusal; `waiting` on a transient state refusal |
+| `running` | following | `deciding` (trigger); `disarmed` (progress `override` or `not_ready`); `done` (end, nothing to append); `stop_requested` (`~/stop`); `run_ended` (`cleared`, `no_run`) |
+| `deciding` | trigger | `requesting` (REPLACE); `running` (CONTINUE, `missed_lead`); `requesting` (STOP truncation) |
+| `requesting` | request sent | `running` (accepted, or a handled refusal); `failed` (§5.2) |
+| `disarmed` | operator override (manual target, arrows) or E-STOP | `running` only on `~/start` **and** re-arm checks: progress `following`, `active_id` == the mirror's last id, fresh inputs, no stop pending. Never automatic |
+| `stop_requested` → `stop_accepted` → `stopped_holding` | §5.3 | `idle` (after `stopped_holding`) |
+| `stop_rejected` | truncation refused (≤ 3 attempts) | `stop_accepted` on a later accepted retry; `run_ended` if the operator ends the run |
+| `done` | plan exhausted | `idle` |
+| `run_ended` | the operator stopped or cleared the run | `idle` (a new run and `~/start` needed) |
+| `failed` | §5.2; a persistent `ContractError`; a mission error; `foreign_update` | `idle` |
+
+- **No concurrency:** one decision and one request at a time.
+- **Restart:** a node restart never resumes a mission. It comes back `idle`, and a new run plus
+  `~/start` are needed.
+- **Authority:** the plan is ours only while progress `active_id` equals the mirror's last accepted
+  id. Any other id → `failed`, reason `foreign_update`.
+- **Disarmed means Control continues.** While `disarmed`, Control keeps its own behaviour: on the
+  operator's release it resumes the loaded path (E-16). The replanner neither changes nor stops it
+  until re-armed.
+
+## 8. Input freshness and degraded operation
+
+All ages are **arrival wall time**, never `header.stamp`: real odometry is stamped 0 (E-40), and the
+grid stamp is sim time under Gazebo.
+
+| Input | Rule | When not fresh at a decision |
+|---|---|---|
+| BeliefGrid | `grid_seq` strictly increasing; age ≤ 5 s [ASSUMPTION] | CONTINUE, logged `stale_belief`. C3's single decision then continues as C2 |
+| Grid validity | contract checks; `odom_to_map_valid` | no first path; CONTINUE afterwards |
+| Progress | age ≤ 1 s (10 Hz, E-11); pre-send age ≤ 0.2 s | no request |
+| Odometry | age ≤ 1 s | decision pose = mirror pose at τ (`pose_source: plan`, brief §6.2 fallback) |
+| Pending looks | mirror path over [τ − t_lat, c] counts as seen (MATH §11.3); t_lat = 10 s [OPEN] | — |
+| Late joiner | TRANSIENT_LOCAL depth 1 receives the last snapshot [NOT RUN, L-B1] | — |
+
+The odometry pose is used for the record and for ψ₀ (MATH §3.5). Tails always start on the mirror.
+
+## 9. Safety table
+
+| Trigger | Response | Evidence / authority |
+|---|---|---|
+| Mission start | Never autonomous: `~/start` **and** an operator-started run (real: MCS START RUN in a `path_source:=replanner` session) | brief §7.2, §17.12; E-21 |
+| Areas | Never sent outside F_margin. Checked before every send; a violation → `failed` | brief Q9; MATH §3 |
+| Start outside the area / no room to turn | Mission error; the replanner never leaves the area to manoeuvre | closure E |
+| Stale or inconsistent inputs | No request (§8) | brief §17.10 |
+| Manual target, arrows, E-STOP | Control refuses updates (E-16); the replanner is **`disarmed`** until an explicit `~/start` with the re-arm checks | brief §7.2; E-16; Control N10 |
+| Run stop / cleared | `run_ended` | E-18 |
+| Rejection or unknown acceptance | §5.2: no blind retry; Control keeps the accepted path | E-09 |
+| Plan exhausted | Control holds the last pose; `done` | E-17 |
+| `~/stop` | §5.3. "Stopped" is reported only as `stopped_holding`; a rejected stop is reported as **not in effect** | closure D |
+| Real-water autonomy | Changes are autonomous within an operator-started run and the areas. The first use comes only after Control's own on-water path-update test and a supervised dry run | [ASSUMPTION] default (Q-13); E-25 |
+
+## 10. Outputs (schemas in `topics.md`)
+
+| Output | Type | Content |
+|---|---|---|
+| `/replanner/plan` | `nav_msgs/Path`, frame `world`, TRANSIENT_LOCAL depth 1 | the mirror |
+| `/replanner/decision` | JSON `blueboat_replanner_decision/1` | one per decision |
+| `/replanner/status` | JSON `blueboat_replanner_status/1`, TRANSIENT_LOCAL depth 1 | 1 Hz and on change, with the §7 states |
+| `~/start`, `~/stop` | `std_srvs/Trigger` | arm and stop |
+
+**Files** go to `<root>/data/Replanner_data/<YYYY_MM_DD-HH_MM_SS>-<mission>-<condition>/`:
+- `<root>`: `data_dir` → `$BLUEBOAT_DATA_DIR` → parent of the first `$COLCON_PREFIX_PATH` entry →
+  cwd;
+- the directory is claimed with `O_EXCL` (suffixes `-2`, `-3`, …); nothing is overwritten;
+- contents:
+  - `manifest.json`, `end.json`;
+  - `mission.yaml`;
+  - `plans/<k>-<id>.yaml` (`blueboat_trajectory/1` in frame M, with `geo_anchor` = datum);
+  - `decisions.jsonl`, `requests.jsonl`, `status.jsonl`.
+
+## 11. Traceability
+
+| Requirement | Source | Design element | Test |
+|---|---|---|---|
+| Path change only via Control | brief §7; E-01 | `ros/executor.py`, `eval/control_stub.py` | stub ≡ `PathUpdater` on the same requests (guarded); Gazebo L-G1 |
+| Continuity at c | E-07 | mirror, change-point rule | every generated tail passes the stub |
+| A refusal leaves the plan unchanged | E-09; brief §17.14 | mirror updated only on acceptance | property 17 |
+| Belief is the only target evidence | CM-9; decision 2 | source sweep (no detection, sonar, `ground_truth` or `/sim/` names in `core/`, `ros/`) | gate sweep |
+| Areas and margin | brief Q9, §17.8 | `areas.py`, `coverage.py`, `routing.py` | every sample in F_margin; concave and narrow cases |
+| Trajectory contract | E-08, E-30 | `plan.sample()` | t increasing ≥ 1 ms; speed ≤ 1.05 U; yaw = tangent; ≤ 20 000 samples |
+| Spacing as a function of range | user; brief §3 | `spacing.py` | MATH §2.4 table; random brute force |
+| Geo bit-identical to MCS | brief §6.5 | `core/geo.py` | value and source comparison |
+| Initial manoeuvre without in-place turning | closure E | `coverage.initial_manoeuvre` | E-1 |
+| Candidate cost = executed tail | closure B | `sequence.py` | B-1…B-5 |
+| Lookahead consistency | closure C | `sequence.py`, `policy/informative.py` | C-1…C-5 |
+| Background calibration | closure A | `value.calibrate_p` | A-1…A-5 |
+| Detection band vs coverage band | closure F | `looks.py`, `spacing.py` | F-1, F-2 |
+| Timing: no send under a missed lead | closure G | executor pre-send check | G-1 |
+| Stop and disarm semantics | closure D; brief §7.2 | executor + state machine | D-1…D-5 |
+| Three rules | synthesis §8.1; brief §8.6 | `rules.py` | abandonment bound; budget never exceeded; C1/C2 never change |
+| Value-model properties | brief §13, §17.14 | `value.py`, `model.py` | MATH §14 |
+| Look predictor ≡ contract geometry | C-5; brief §9.2 | `looks.py` | > 97 % vs `belief_reference`; real Belief **skipped** |
+| Determinism | brief §13 | pure core | byte-identical decisions |
+| CM-12 fairness | synthesis §7.3 | one generator, one executor, one speed and turn model; all adaptive conditions = C2 plus detours; frozen C2 protocol | `C2_TUNING_PROTOCOL.md`; runner freeze check |
+| No online randomness | user rule | `eval/` only | gate sweep |
+| Model-conditional results | CM-13 | labels | `REPORT.md` |
+
+## 12. Open items
+
+| Id | Item | Owner | Blocks |
+|---|---|---|---|
+| O-1 | Belief's topic, QoS, datum source, transform form, evidence input (Q-9) | Belief session / user (RQ-2, RQ-3) | Phase 4 binding, emulator output |
+| O-2 | R-3: `path_source` in SSS-Sim `full_mission_launch.py` | user → SSS-Sim (RQ-1) | Gazebo E4 in built worlds |
+| O-3 | Turn radius, settle time, 0.5 m/s achieved, initial-manoeuvre tracking (L-K1…L-K4, L-C5) | in-machine | none (placeholders) |
+| O-4 | r_near, measured r_far (L-S1) | in-machine | none (placeholders) |
+| O-5 | Clutter re-detection probability f; planner aspect windows (E3) | user / E3 | C4 values (swept) |
+| O-6 | Belief configuration file format, for the optional cross-check | Belief session | nothing |
+| O-7 | Real-water autonomy, confirmed after a dry run (Q-13) | user | E6 |
+| O-8 | Missions with more than one area (how areas connect) | user | multi-area missions only |
+| O-9 | Belief latency t_lat and detection window (L-B5, L-B6) | in-machine | C4 pending-look window; calibration interpretation (MATH §9.1) |

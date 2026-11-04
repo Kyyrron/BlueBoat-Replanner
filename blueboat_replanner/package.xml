@@ -1,0 +1,35 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>blueboat_replanner</name>
+  <version>0.1.0</version>
+  <description>
+    Aspect-aware replanner for the BlueBoat side-scan survey (thesis deliverable D6).
+    Reads only the belief map as target evidence and changes the path being followed
+    through Control's live path update (/blueboat/update_path). Generates every survey
+    condition (single pass, two-pass orthogonal, append-on-completion, informative) through
+    one coverage generator and one executor. The core is ROS-free and deterministic.
+  </description>
+  <maintainer email="killian.bertrand2002@gmail.com">Killian BERTRAND</maintainer>
+  <license>Apache-2.0</license>
+
+  <depend>rclpy</depend>
+  <depend>std_msgs</depend>
+  <depend>std_srvs</depend>
+  <depend>nav_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <!-- live path update service (BlueBoat-Control) -->
+  <depend>blueboat_interfaces</depend>
+  <!-- BeliefGrid / BeliefContact (BlueBoat-Belief, contract belief_grid/0) -->
+  <depend>blueboat_belief_interfaces</depend>
+  <!-- eval/emulator_node.py only (Detection2DArray, Perception's convention) -->
+  <exec_depend>vision_msgs</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

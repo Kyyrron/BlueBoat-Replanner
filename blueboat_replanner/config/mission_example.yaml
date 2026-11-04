@@ -1,0 +1,12 @@
+# Mission file (brief §6.4). Exactly one WGS-84 polygon ([OPEN] O-8). Unknown keys raise.
+mission:
+  name: devloop_example
+  condition: C3            # C1 | C2 | C3 | C4 | C4_iso | C4_rand | C4_depth1 | C4_degraded | C4_live
+  areas:
+    - [[34.5, 133.5], [34.5, 133.5013], [34.50054, 133.5013], [34.50054, 133.5]]
+  config:
+    planning_depth_m: 2.0  # required (MATH §2.3)
+    # C2 tuned settings (copy from config/c2_tuned.yaml once frozen):
+    # spacing_factor: 0.8
+    # pass1_direction: long_axis
+    # interlace: auto

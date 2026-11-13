@@ -9,17 +9,22 @@ through **one** coverage generator and **one** executor:
 - C3 append-on-completion;
 - C4 informative, with its ablations.
 
-The brief is `docs/REPLANNER_BRIEF.md` (read-only). The contract with Belief is `belief_grid/0`
-(prompt §B; `docs/CONTRACT_CONSUMED.md`).
+The brief is `docs/REPLANNER_BRIEF.md` (read-only). The contract with Belief is `belief_grid/0`:
+Belief's `docs/topics.md` is its text, `docs/CONTRACT_CONSUMED.md` is how this module reads it.
 
 ## 1. Authority and documents
 - Project rules: root `.claude/CLAUDE.md` and `project_synthesis.md` (there is no context pack).
+- **Where the work stands, the owner's decisions, what comes next: `docs/HANDOVER.md`** (read
+  it first). Open items in short: `.claude/TODO.md`.
+- What the module is, the science behind it, how it works: `README.md`.
 - Design `docs/DESIGN.md`; mathematics `docs/MATH.md`; interfaces `docs/topics.md`.
-- Phase records: `PHASE0_VERIFICATION.md`, `PHASE1_CLOSURE.md`.
-- Evidence ids: `docs/EVIDENCE_REGISTER.md` (E-nn, L-nn).
-- Open questions: `docs/QUESTIONS_PHASE0.md` (answers at the top) and `.claude/TODO.md`.
-- Local work: `docs/LOCAL_CHECKLIST.md`; handover `docs/HANDOVER_CLOUD.md`.
+- Belief binding: `docs/REAL_BELIEF_BINDING.md`, `docs/CONTRACT_CONSUMED.md`. Dev loop:
+  `docs/DEVLOOP.md` (the main copy of its results). Weight of every claim: `docs/REPORT.md`.
+- Evidence ids: `docs/EVIDENCE_REGISTER.md` (E-nn, L-nn, A-nn). Requests: `docs/REQUESTS.md`.
+- ROS, Gazebo and boat checks: `docs/LOCAL_CHECKLIST.md` (L-X is the main copy of the ROS step).
 - Where a document and the code disagree, the code wins: fix the document.
+- **Only current documents** (owner, 2026-11-13): no session records, no change logs; one main
+  copy of each fact, other documents point to it. Git keeps the history.
 
 ## 2. Layout (ament_python, one level below the git root)
 `blueboat_replanner/`:
@@ -29,40 +34,50 @@ The brief is `docs/REPLANNER_BRIEF.md` (read-only). The contract with Belief is 
   - `adapters.py`, the one field-name table;
   - `executor.py`, the ONLY code that knows `/blueboat/update_path`;
   - `replanner_node.py`, the only rclpy code.
-- `eval/`: dev loop, reference belief, world/emulator, Control stub, runner, emulator node; the
+- `eval/`: dev loop and runner, `belief_real.py` (the binding to BlueBoat-Belief's core),
+  `emulator.py` (looks at world objects, seabed images), world, Control stub, emulator node; the
   only randomness.
-- Also `config/`, `launch/`, and `test/smoke_test.py`.
+- Also `config/`, `launch/`, `test/smoke_test.py` (the gate's runner; one file per section in
+  `test/gate/`; `test/test_gate.py` runs it for `colcon test`) and `test/ros_graph_check.py` (the
+  ROS runtime check, run by hand through `.claude/tools/ros_check.sh`, never on domain 0).
 
 Full tree: DESIGN §3.
 
 ## 3. Interfaces (details: `docs/topics.md`)
 | Name | Dir | Type / QoS |
 |---|---|---|
-| `/belief_map/belief_grid` (provisional) | in | `blueboat_belief_interfaces/BeliefGrid`, RELIABLE TRANSIENT_LOCAL depth 1 — the ONLY target evidence |
-| `/blueboat/path_progress`, `/blueboat/path_update_event` | in | String JSON (Control `blueboat_path_progress/1`, `…_event/1`) |
+| `/belief_map/belief_grid` | in | `blueboat_belief_interfaces/BeliefGrid`, RELIABLE TRANSIENT_LOCAL depth 1 — the ONLY target evidence. Its header stamp is Belief's evidence horizon |
+| `/blueboat/path_progress`, `/blueboat/path_update_event` | in | String JSON (Control `blueboat_path_progress/1`, `…_event/1`); `ros_time` + `tau` convert the grid stamp to path time |
 | `/blueboat/odom` | in | Odometry; freshness by arrival time (real stamps are 0) |
 | `/blueboat/update_path` | client | `blueboat_interfaces/srv/UpdatePath`, frame `world` |
 | `/replanner/plan` · `/decision` · `/status` | out | Path · JSON `blueboat_replanner_decision/1` · `blueboat_replanner_status/1` |
 | `/replanner/start`, `/replanner/stop` | srv | `std_srvs/Trigger` |
-| mission file | file | brief §6.4, one WGS-84 polygon, `planning_depth_m` required |
+| mission file | file | brief §6.4, one WGS-84 polygon, `planning_depth_m` required; it must lie inside Belief's area |
 
 ## 4. Non-negotiables
-1. **Never `git commit` or `git push`** (root §2.1). The user commits. Deliverables stay in this
-   repo; no archives.
-2. Edit only inside `BlueBoat-Replanner/`. Other modules are read-only (CM-3). Needs go to
-   `docs/REQUESTS.md`.
+1. **Never `git commit`, `git push`, or stage** (root §2.1). The user does. Deliverables stay in
+   this repo; no archives.
+2. Edit only inside `BlueBoat-Replanner/`. Other modules are read-only (CM-3), **Belief
+   included**. Needs go to `docs/REQUESTS.md`. One exception (owner, 2026-11-13): the
+   superproject's root lines that describe this module (root `.claude/CLAUDE.md`,
+   `interface-contract.md`, `synthesis-discrepancies.md`, the skills, `README.md`,
+   `project_synthesis.md`) are kept current by this module's sessions; change only those
+   lines, and re-read each file first (other sessions edit it). Lines in other modules that
+   describe this module are corrected only by an explicit owner's order (as on 2026-11-13).
 3. No new message types. JSON goes on `std_msgs/String` with a `"schema"` field (CM-1).
 4. The path changes **only** through `/blueboat/update_path`. Never write MCS files, never start a
    `/path_request` server.
 5. The belief map is the only online source of target evidence. Never read detections, sonar,
-   ground truth or `/sim/*` online (CM-9 as decided; INTEGRATION §4).
+   ground truth or `/sim/*` online (root CM-9).
 6. Core purity: no rclpy, clock or randomness in `core/`. Randomness lives in `eval/` only, from
    seeded `SeedSequence`s.
-7. Planner model ≠ world model: configuration, not code. Ablations change only the planner block.
+7. Planner model ≠ world model ≠ Belief's model: configuration, not code. Ablations change only
+   the planner block.
 8. **C2 is tuned seriously and frozen before any C3/C4 result** (`docs/C2_TUNING_PROTOCOL.md`; the
-   runner enforces it). Never tune to make C4 win (CM-12).
-9. Results are model-conditional (CM-13). Every dev-loop number is "reference-belief-conditional,
-   preliminary" and never E4 (synthesis §6.2 ⚠).
+   runner enforces it and never overwrites a freeze). Never tune to make C4 win (CM-12).
+9. Results are model-conditional (CM-13). Every dev-loop number is "real-Belief dev loop,
+   preliminary" and never E4 (synthesis §6.2 ⚠). While Belief's `detector_calibrated` is false,
+   everything built on a detection score is `score-conditional`.
 10. Math first: an ambiguity found while coding goes to `docs/MATH.md` before code (brief §18).
 11. Safety:
     - no autonomous start;
@@ -70,32 +85,42 @@ Full tree: DESIGN §3.
     - "stopped" is reported only as `stopped_holding`; a refused stop is "not in effect".
 12. Cite nothing from memory. Literature statuses are in MATH §16, separating what was read from
     what was not.
+13. **The belief map is BlueBoat-Belief's, everywhere** (owner, 2026-11-12). The dev loop drives
+    Belief's own core through its documented offline interface (`eval/belief_real.py`), and
+    nothing here imitates Belief. If the core cannot be imported, the dev loop stops.
+14. **Read Belief by meaning.** Searched sectors are `aspect_log_miss < 0`, never
+    `aspect_counts`; the grid is complete up to its header stamp; a lower `grid_seq` is a restart
+    (`docs/CONTRACT_CONSUMED.md`).
+15. **Do not load the machine while a simulation is recorded:** before a dev-loop run, a
+    `colcon`, `ros2` or `gz` command, check `pgrep -af 'record_ru[n]\.py'`. That tool also finds
+    other runs by scanning process command lines, so keep simulator and node names out of shell
+    commands while it runs.
 
 ## 5. Commands
 ```bash
-cd blueboat_replanner && python3 -m test.smoke_test                 # the gate (no ROS)
-python3 -m blueboat_replanner.eval.runner --out ../results/<dir>/c2_tuning --tune-c2 --jobs 4
-python3 -m blueboat_replanner.eval.runner --out ../results/<dir> \
-    --c2-tuned ../results/<dir>/c2_tuning/c2_tuned.yaml --seeds 30 --jobs 4
-colcon build --packages-select blueboat_replanner                   # in-machine (L-R1)
+cd blueboat_replanner && python3 -B -m test.smoke_test              # the gate (no ROS, ~90 s)
+.claude/tools/devloop_batches.sh                                    # dev loop on Belief's core: C2 freeze, then every batch
+.claude/tools/ros_check.sh                                          # scratch build + the nodes on an isolated ROS domain beside Belief's node (made-up inputs, no Gazebo; ~28 min)
+colcon build --packages-select blueboat_replanner                   # needs blueboat_interfaces, blueboat_belief_interfaces (L-R1)
 ros2 launch blueboat_replanner replanner_launch.py mission_file:=<abs yaml>
 ros2 service call /replanner/start std_srvs/srv/Trigger {}
 ```
 - **Gate.** The Stop hook in `.claude/settings.json` runs `.claude/tools/smoke_gate.sh`, only when
   a package `.py` file changed, and exits 2 on failure.
-- **Foreign checks.** The gate cross-checks MCS `geo.py` (bit-identity) and Control's ROS-free
-  `path_update.PathUpdater` when they sit beside this repo. It imports them with bytecode writing
-  off, so nothing is written into their trees.
+- **Foreign checks.** The gate cross-checks MCS `geo.py` (bit-identity), Control's ROS-free
+  `path_update.PathUpdater` and BlueBoat-Belief's core when they sit beside this repo. It imports
+  them with bytecode writing off, so nothing is written into their trees.
 
-## 6. Status
-- **2026-11-04, cloud session REPLAN-1: Phases 0–5 done.**
-  - The gate: **188 passed, 0 failed, 1 skipped** (the real-Belief check).
-  - The dev loop: C2 frozen, then 450 missions with 0 failures, 0 refusals and 0 missed leads.
-    Results are in `docs/DEVLOOP.md` §5 and `results/devloop_2026-11-04/`.
-  - What each claim is worth: `docs/REPORT.md`. Next steps: `docs/HANDOVER_CLOUD.md` and
-    `docs/LOCAL_CHECKLIST.md`.
-  - **Not run under ROS:** the node, the emulator node and the launch files. They run only
-    through the stand-in modules of gate [24]. No Gazebo mission and no `colcon build` has run.
-  - **Not available here:** the real Belief core.
-  - **Dev-loop finding to keep in view:** the aspect-aware bearing choice shows no effect
-    (C4 = C4_rand). The gain comes from revisiting early (`DEVLOOP.md` §5.2).
+## 6. Status (2026-11-13; details in `docs/HANDOVER.md`)
+- Built: core, executor, node, emulator node, launch files. Gate **278 passed, 0 failed,
+  0 skipped**; `colcon test` runs it.
+- Dev loop on BlueBoat-Belief's own core, its missions executed by the node's executor
+  (40 stored missions re-run on it are identical): C2 frozen, 690 missions + 150
+  (`docs/DEVLOOP.md` §5).
+  In this loop only: at the full budget no adaptive condition is distinguishable from C2;
+  mid-mission and under a budget cut they are ahead; the aspect model shows no effect
+  (C4 = C4_iso).
+- Under ROS: only on an isolated graph beside Belief's node with made-up inputs, on the code
+  of 2026-11-12 (`docs/LOCAL_CHECKLIST.md` L-X). Built into `~/ros2_ws/install` (2026-11-13);
+  never with Control's node, Gazebo or the boat.
+- Not committed: the work of 2026-11-12 and 2026-11-13.

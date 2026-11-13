@@ -3,7 +3,7 @@
 A `Plan` is a chain of `Segment`s in one frame, flown at constant speed U from parameter t0.
 Its time axis is Control's path-parameter axis (path seconds). `sample()` produces exactly the
 [t, x, y, yaw] request Control receives, so planned and charged durations agree by
-construction (MATH §4, closure B).
+construction (MATH §4).
 
 `ControlPathMirror` holds what Control holds (accepted samples, spliced at change points) and
 evaluates it with Control's rule (PATH_UPDATE_INTERFACE.md §3; E-10).
@@ -113,12 +113,13 @@ class Plan:
         s = (min(t, b) - a) * self.speed
         return seg.pose_at_s(s)
 
-    def boundaries(self) -> list:
-        return [b for (_, b) in self.times]
-
-    def decision_points(self, kinds=("line", "body")) -> list:
-        """(t_end, segment index) of the default decision points (DESIGN §6)."""
-        return [(self.times[i][1], i) for i, s in enumerate(self.segments) if s.kind in kinds]
+    def next_line(self, i: int) -> int | None:
+        """Index of the first coverage leg (`line`) after segment i, or None: the start of the
+        default continuation K (MATH §10.1)."""
+        for j in range(i + 1, len(self.segments)):
+            if self.segments[j].kind == "line":
+                return j
+        return None
 
     # ------------------------------------------------------------- edits
     def retimed(self, t0: float) -> "Plan":
@@ -127,9 +128,6 @@ class Plan:
     def from_index(self, i: int, t0: float | None = None) -> "Plan":
         t0 = self.times[i][0] if t0 is None else t0
         return Plan(self.segments[i:], t0, self.speed)
-
-    def concat(self, other_segments) -> "Plan":
-        return Plan(self.segments + list(other_segments), self.t0, self.speed)
 
     def truncated(self, t_limit: float) -> "Plan":
         """Keep whole segments ending at or before t_limit, then strip trailing

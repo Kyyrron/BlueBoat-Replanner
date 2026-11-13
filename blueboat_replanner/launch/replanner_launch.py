@@ -1,7 +1,11 @@
-"""Replanner node launch. [NOT RUN — needs in-machine session.]
+"""Replanner node launch. [Run on 2026-11-12 on an isolated ROS graph: test/ros_graph_check.py.]
 
     ros2 launch blueboat_replanner replanner_launch.py mission_file:=/abs/mission.yaml \
-        [config_file:=/abs/replanner.yaml] [data_dir:=...] [belief_topic:=/belief_map/belief_grid]
+        [config_file:=/abs/replanner.yaml] [c2_tuned_file:=/abs/c2_tuned.yaml] [data_dir:=...] \
+        [belief_topic:=/belief_map/belief_grid]
+
+`c2_tuned_file` defaults to the installed `config/c2_tuned.yaml` (the C2 freeze every mission
+flies; io/mission.py).
 
 ROS launch symbols are imported optionally so the offline gate can compile this file.
 """
@@ -19,7 +23,8 @@ except ImportError:          # offline gate
 def generate_launch_description():
     # name -> (default, type); explicit types so an empty path stays a string and
     # `tick_hz:=5` stays a float (launch_ros YAML-parses argument strings otherwise)
-    args = {"mission_file": ("", str), "config_file": ("", str), "data_dir": ("", str),
+    args = {"mission_file": ("", str), "config_file": ("", str), "c2_tuned_file": ("", str),
+            "data_dir": ("", str),
             "belief_topic": ("/belief_map/belief_grid", str), "tick_hz": ("5.0", float)}
     decl = [DeclareLaunchArgument(k, default_value=v) for k, (v, _) in args.items()]
     node = Node(package="blueboat_replanner", executable="replanner_node", name="replanner",

@@ -1,0 +1,11 @@
+C4           seed 2000 f=1 score +2 wall 14.5s
+C4           seed 2001 f=1 score +4 wall 8.1s
+C4           seed 2002 f=1 score +1 wall 14.5s
+C4           seed 2003 f=1 score +3 wall 13.3s
+C4           seed 2004 f=1 score +2 wall 10.1s
+C4_depth1    seed 2000 f=1 score +2 wall 9.3s
+C4_depth1    seed 2001 f=1 score +3 wall 7.3s
+C4_depth1    seed 2002 f=1 score +2 wall 7.9s
+C4_depth1    seed 2003 f=1 score +3 wall 8.8s
+C4_depth1    seed 2004 f=1 score +2 wall 8.4s
+wrote ../results/devloop_real_2026-11-12/timing_uncontended/summary.md

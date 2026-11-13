@@ -1,4 +1,4 @@
-"""C4 family — aspect-aware informative replanner (MATH.md §10-§12, closure B and C).
+"""C4 family — aspect-aware informative replanner (MATH.md §10-§12).
 
 At each decision point (end of a coverage leg or a revisit body) the policy compares
 CONTINUE with REVISIT(contact, folded sector) detours by the value of the whole executed tail
@@ -11,7 +11,7 @@ combined value. Only the first action is sent. Variants (configuration, not code
   C4_degraded  degraded planner block (set by eval/ through configuration)
   C4_live   may_interrupt (not part of E4; decision points as C4 in this version)
 RECOVER (out-of-order coverage legs) is not implemented in this version: K already contains
-pass 2 (closure B); see MATH §10.2.
+pass 2; see MATH §10.2.
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ from ..plan import Plan, Segment
 from ..routing import connect
 from ..sequence import Evaluator
 from ..value import contact_value
-from .base import CONTINUE, REPLACE, Decision, Policy
+from .base import CONTINUE, REPLACE, STOP, Decision, Policy, horizon_of
 
 VARIANTS = ("C4", "C4_iso", "C4_rand", "C4_depth1", "C4_degraded", "C4_live")
 
@@ -35,13 +35,6 @@ def informative_policy(condition: str) -> "InformativePolicy":
     if condition not in VARIANTS:
         raise ValueError(f"unknown C4 variant {condition!r}")
     return InformativePolicy(condition)
-
-
-def _next_line(plan, i):
-    for j in range(i + 1, len(plan.segments)):
-        if plan.segments[j].kind == "line":
-            return j
-    return None
 
 
 class InformativePolicy(Policy):
@@ -126,28 +119,36 @@ class InformativePolicy(Policy):
         snap, plan, area = ctx.belief, ctx.plan, ctx.area
         c = ctx.c
         B_rem = ctx.budget.t_limit - c
-        k_idx = _next_line(plan, ctx.dp_index)
+        k_idx = plan.next_line(ctx.dp_index)
         K = Plan(plan.segments[k_idx:], 0.0, U) if k_idx is not None else None
         k_start = plan.segments[k_idx].start_pose() if k_idx is not None else None
         cont_plan = Plan(plan.segments[ctx.dp_index + 1:k_idx] if k_idx is not None else [],
                          0.0, U)
         T_cont = cont_plan.duration
         tau = ctx.state.get("tau", c)
-        pend = plan_looks(plan, max(plan.t0, tau - cfg.t_lat_s), c, snap,
-                          _model_for(cfg, snap)) if c > plan.t0 else Looks.empty()
-        ev = Evaluator(cfg, snap, area, K, pend, B_rem)
+        # ---- pending looks: what the grid does not hold yet (MATH §11.3)
+        tau_h, h_src = horizon_of(ctx, cfg, tau)
+        guard = cfg.contact_guard_m / U
+        if c > plan.t0:
+            m0 = _model_for(cfg, snap)
+            pend = plan_looks(plan, max(plan.t0, tau_h), c, snap, m0)
+            pend_c = plan_looks(plan, max(plan.t0, tau_h - guard), c, snap, m0)
+        else:
+            pend = pend_c = Looks.empty()
+        ev = Evaluator(cfg, snap, area, K, pend, B_rem, pend_c)
         cont_looks = ev.piece_looks(cont_plan, 0.0) if cont_plan.segments else Looks.empty()
         J_cont = ev.sequence_value(cont_looks, T_cont)["J"]
         state = ctx.state
         nrev = state.setdefault("n_rev", {})
         hist = state.setdefault("rev_hist", {})
         rules = []
-        # ---- abandonment bookkeeping (MATH §12)
+        resolved, abandoned = set(), set()
+        # ---- abandonment bookkeeping (MATH §12): p_after once the horizon covers the body
         for uid, entries in hist.items():
             cs = ev.contact(uid)
             for e in entries:
                 if e.get("p_after") is None and cs is not None and \
-                        tau - cfg.t_lat_s >= e["t_end"]:
+                        tau_h - guard >= e["t_end"]:
                     e["p_after"] = cs.p_tilde
         # ---- candidate contacts (resolution, abandonment, pending)
         cands = []
@@ -156,32 +157,38 @@ class InformativePolicy(Policy):
         for cs in ev.contacts:
             if cs.confirmed:
                 rules.append({"rule": "resolution", "uid": cs.uid, "why": "confirmed"})
+                resolved.add(cs.uid)
                 continue
             if cs.p_tilde < cfg.p_res:
                 rules.append({"rule": "resolution", "uid": cs.uid, "why": "p_tilde<p_res"})
+                resolved.add(cs.uid)
                 continue
             if nrev.get(cs.uid, 0) >= cfg.n_max:
                 rules.append({"rule": "abandonment", "uid": cs.uid, "why": "n_max"})
+                abandoned.add(cs.uid)
                 continue
             h = [e for e in hist.get(cs.uid, []) if e.get("p_after") is not None]
             if len(h) >= 2 and all(abs(e["p_after"] - e["p_before"]) < cfg.delta for e in h[-2:]):
                 rules.append({"rule": "abandonment", "uid": cs.uid, "why": "no_progress"})
+                abandoned.add(cs.uid)
                 continue
             if ev.contact_pending.get(cs.uid):
                 continue
             avail = [g for g in range(ev.model.G) if g not in cs.seen_g]
             if not avail:
                 rules.append({"rule": "resolution", "uid": cs.uid, "why": "all_sectors_seen"})
+                resolved.add(cs.uid)
                 continue
-            # prefilter: the 3 best sectors by the body look alone (closure C, top-K proxy)
+            # prefilter: the k best sectors by the body look alone (MATH §11.2, top-K proxy)
             r_star = cfg.r_star_m
             pdr = float(ev.model.pd_r(r_star))
             prox = sorted(((contact_value(cs, ev.model, cfg, {g: pdr}), g) for g in avail),
                           key=lambda t: (-t[0], t[1]))
             if prox[0][0] <= 0:
                 rules.append({"rule": "resolution", "uid": cs.uid, "why": "no_positive_bearing"})
+                resolved.add(cs.uid)
                 continue
-            cands += [(cs, g) for v, g in prox[:3] if v > 0]
+            cands += [(cs, g) for v, g in prox[:cfg.sector_prefilter_k] if v > 0]
         pose_c = plan.pose_at(c)
         built = []
         for cs, g in cands:
@@ -189,7 +196,7 @@ class InformativePolicy(Policy):
             if cand is None:
                 continue
             dT = cand["T"] - T_cont
-            if elapsed + cand["T"] > ctx.budget.B + 1e-9 or dT > cap_left + 1e-9:
+            if ctx.budget.admission(elapsed, cand["T"], dT, cap_left):
                 continue
             res = ev.sequence_value(union(cand["a_looks"], cand["r_looks"]), cand["T"])
             cand.update(J=res["J"], dT=dT)
@@ -219,7 +226,29 @@ class InformativePolicy(Policy):
         best = max(top, key=lambda d: (d["J2"], -d["uid"], -d["g"]), default=None)
         info = {"J2_continue": J2_cont, "epsilon_J": cfg.epsilon_j,
                 "calibration_clamped": ev.bg.clamped, "pending_keys": int(len(pend)),
-                "n_candidates": len(built)}
+                "n_candidates": len(built),
+                "calibration": ev.bg.info(),
+                "pending": {"tau_horizon": tau_h if math.isfinite(tau_h) else None,
+                            "source": h_src, "keys": int(len(pend)),
+                            "contact_keys": int(len(pend_c)), "contact_guard_s": guard},
+                "unmapped_classes": list(ev.model.unmapped),
+                "aspect_inert": not bool(ev.model.mapped.any()),
+                "contacts": [{"uid": cs.uid, "p_tilde": cs.p_tilde,
+                              "q0": None if math.isnan(cs.q0) else cs.q0,
+                              "state": 1 if cs.confirmed else 0,
+                              "n_rev": nrev.get(cs.uid, 0),
+                              "resolved": cs.uid in resolved, "abandoned": cs.uid in abandoned,
+                              "pending": bool(ev.contact_pending.get(cs.uid)),
+                              "detected_g": sorted(cs.detected_g),
+                              "missed_g": [[g, round(v, 6)] for g, v in cs.missed],
+                              "fallbacks": list(cs.fallbacks)} for cs in ev.contacts]}
+        # ---- mission stop (MATH §12): the best action's value rate is below the floor
+        J_best = J2_cont if best is None else max(J2_cont, best["J2"])
+        if cfg.rho_floor > 0 and B_rem > 0 and J_best / B_rem < cfg.rho_floor:
+            rules.append({"rule": "mission_stop", "why": "rho_floor",
+                          "rate": J_best / B_rem, "rho_floor": cfg.rho_floor})
+            info["chosen"] = "STOP"
+            return Decision(STOP, c, rules_fired=tuple(rules), scored=tuple(scored), info=info)
         if best is None or best["J2"] < J2_cont + cfg.epsilon_j:
             return Decision(CONTINUE, c, rules_fired=tuple(rules), scored=tuple(scored),
                             info=info)
@@ -236,7 +265,7 @@ class InformativePolicy(Policy):
                 if cand is None:
                     continue
                 dT = cand["T"] - T_cont
-                if elapsed + cand["T"] > ctx.budget.B + 1e-9 or dT > cap_left + 1e-9:
+                if ctx.budget.admission(elapsed, cand["T"], dT, cap_left):
                     continue
                 cand.update(dT=dT, J=None, J2=None)
                 chosen = cand
@@ -292,7 +321,7 @@ class InformativePolicy(Policy):
                                       cap_left, exclude={(uid, a1["g"])}):
             T = T1 + a2["T"]
             dT2 = a2["T"] - a1["T_r"]
-            if elapsed + T > ctx.budget.B + 1e-9 or dT2 > cap_left + 1e-9:
+            if ctx.budget.admission(elapsed, T, dT2, cap_left):
                 continue
             options.append((union(a1["a_looks"], a2["a_looks"], a2["r_looks"]), T))
         best_det = best_miss = -math.inf
@@ -310,7 +339,7 @@ class InformativePolicy(Policy):
         J = ev.sequence_value(cont_looks, T_cont)["J"]
         if K is None or not K.segments:
             return J
-        j_next = _next_line(K, 0)
+        j_next = K.next_line(0)
         leg0 = Plan(K.segments[:1], 0.0, cfg.speed_mps)
         T0 = T_cont + leg0.duration
         leg_looks = ev.piece_looks(leg0, T_cont)
@@ -323,7 +352,7 @@ class InformativePolicy(Policy):
         for a2 in self._a2_candidates(ev, cfg, area, pose, k2_start, snap, T0, cap_left):
             T = T0 + a2["T"]
             dT2 = a2["T"] - cont2
-            if elapsed + T > ctx.budget.B + 1e-9 or dT2 > cap_left + 1e-9:
+            if ctx.budget.admission(elapsed, T, dT2, cap_left):
                 continue
             looks = union(cont_looks, leg_looks, a2["a_looks"], a2["r_looks"])
             val = ev.sequence_value(looks, T, tail=j_next if j_next is not None else

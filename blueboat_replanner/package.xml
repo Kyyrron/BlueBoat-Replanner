@@ -22,12 +22,16 @@
   <depend>blueboat_interfaces</depend>
   <!-- BeliefGrid / BeliefContact (BlueBoat-Belief, contract belief_grid/0) -->
   <depend>blueboat_belief_interfaces</depend>
+  <!-- eval/ only: the dev loop drives Belief's core through its offline interface
+       (docs/REAL_BELIEF_BINDING.md); the online node reads the BeliefGrid message only -->
+  <exec_depend>blueboat_belief</exec_depend>
   <!-- eval/emulator_node.py only (Detection2DArray, Perception's convention) -->
   <exec_depend>vision_msgs</exec_depend>
   <exec_depend>python3-numpy</exec_depend>
   <exec_depend>python3-yaml</exec_depend>
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
+  <test_depend>python3-pytest</test_depend>
 
   <export>
     <build_type>ament_python</build_type>

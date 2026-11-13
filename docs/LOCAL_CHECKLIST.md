@@ -1,29 +1,91 @@
-# Local checklist — input of the in-machine session (`REPLAN-2-LOCAL`)
+# Local checklist — the in-machine work
 
-Everything here needs ROS 2, Gazebo, the real Belief core, recordings or the boat, and was
-**[NOT RUN — needs in-machine session]** in the cloud. Each item says what to run and what result
-settles it. Final list of the cloud session (Phases 0–5, 2026-11-04).
+Each item says what to run and what result settles it. An item is ticked only when it was run
+and its result is written here. Where the work stands and what comes next: `HANDOVER.md`.
+
+**Done on 2026-11-12 (offline, no ROS):** L-B2, L-B3, L-B4, L-B5 (as a published quantity),
+L-B6, L-B7 (binding, gate and the dev-loop runs), L-R2.
+**Done on 2026-11-12, evening, under ROS on an isolated graph** (section "L-X" below: a scratch
+build, ROS domain 47, Belief's installed node, made-up sonar, navigation and Control; no
+Gazebo, no Control node, no boat): L-R1 (scratch build), L-R3, L-R4, L-R5, L-R6, L-B1, and the
+emulator node on that graph (L-E1…L-E3 in part).
+**Not done:** everything that needs Control's node, Gazebo or the boat (L-C, L-K, L-G, L-S,
+L-O, and the emulator in a built world).
 
 **Suggested order:** L-0 → L-R1/L-R2 (build, offline gate) → L-C1…L-C4 (Control) → L-B1…L-B4
 (Belief binding) → L-R3…L-R6 (node graph, QoS, adapter) → L-E (emulator) → L-K3/L-K4 (speed,
 turns) → L-G1…L-G4 (Gazebo missions) → L-B5/L-B6/L-B7 (latency, model, dev loop on the real core)
 → the rest.
 
-**What the cloud already checked offline, so a failure here points at ROS/DDS or a neighbour:**
-- the gate (`test/smoke_test.py`, 187 passed / 0 failed / 1 skipped);
+**What the offline gate already covers, so a failure here points at ROS/DDS or a neighbour:**
+- the gate (`test/smoke_test.py`, **278 passed / 0 failed / 0 skipped** on 2026-11-13, with
+  `/usr/bin/python3` (numpy 1.26.4) and `~/ros2_ws/.venv/bin/python3` (numpy 2.4.4); about 90 s);
 - the executor against a Control stub cross-checked with Control's own `PathUpdater` ([21], [23]);
-- `replanner_node.py` and `eval/emulator_node.py` driven through **stand-in** rclpy, message and
+- the reading of Belief's grid against BlueBoat-Belief's own core ([20], [22]);
+- `replanner_node.py` and `eval/emulator_node.py` driven through **fake** rclpy, message and
   service modules ([24]: graph, `~/start`, a C3 run with 2 accepted requests, `/replanner/plan`,
-  records; emulator draws and fill convention). The stand-ins are hand-written: they prove the
-  wiring of the two files, not DDS, QoS matching, executors or the real message classes.
+  records; emulator looks, one array per image, fill convention). The fake modules are
+  hand-written: they prove the wiring of the two files, not DDS, QoS matching, executors or the
+  real message classes.
+
+## L-X The first run under ROS: an isolated graph, no simulator (2026-11-12, evening)
+
+- [x] **Run:** `.claude/tools/ros_check.sh` (a scratch build of this package, then
+  `blueboat_replanner/test/ros_graph_check.py`). ROS domain 47, Fast DDS on UDPv4 only, this
+  machine only; the check refuses domain 0 and a graph that is not empty. Runs 1 to 4 below
+  were made with the same two steps typed by hand in this session's scratch folder; run 5 is
+  the script itself.
+- **Real:** Belief's installed node (`~/ros2_ws/install`, built at 15:34, core sha256
+  `fcd9531597e593b3…`); this package's `replanner_node` and `replanner_emulator_node`, from
+  their executables and from their launch files; DDS; every message and service type
+  (`BeliefGrid`, `UpdatePath`, `ProcessedSSSPing`, `Detection2DArray`, …).
+- **Made up by the check:** the sonar pings (10 Hz, a thinned swath, no image content),
+  odometry, GPS fixes, a world file with 8 objects, and Control: `/blueboat/path_progress` and a
+  `/blueboat/update_path` server of the real type, answered by the dev loop's Control test
+  double. Every clock is the wall clock (`use_sim_time` false).
+- **So it is not** Control, not a simulation, not a sonar, not a detector.
+- **Result of the last run (21:27–21:52): 42 checks, 0 failed.** The machine: 16 cores, three
+  single-core jobs of another session running, load average about 5.
+
+| Group | Checks | What was seen |
+|---|---|---|
+| [R1] nodes, endpoints, QoS | 11 | `belief_map` and `replanner` up. `/belief_map/belief_grid`: RELIABLE + TRANSIENT_LOCAL on both ends. The node's three publishers with their types, its three other subscriptions, its two `Trigger` services. The status is latched: a late subscriber gets it at once (`idle`) |
+| [R2] alignment | 4 | The first grids come from an unaligned Belief: received, not used, and the status says why (`grid_note`: "odom_to_map_valid is false…"). After 10 GPS / odometry pairs the grid is used. Belief's transform is the made-up offset (5.0, −3.0) m, not the identity. `grid_seq` advances by exactly 1 |
+| [R3] a C3 mission, path clock × 10 | 11 | `~/start` accepted. The first path goes through the real `UpdatePath` type (2810 samples, frame `world`) and is accepted. The mission runs to `done`. One decision: a REPLACE with two contacts, sent and accepted, no refusal. The evidence horizon is read from the grid stamp (`source: stamp`; 13 path-s behind the boat). Labels `score-conditional` and `belief-ungated` (in this bring-up Belief ran with `coverage.require_detector: false`, since nothing detects). The decision time is in the record (0.009 s). `/replanner/plan` once per accepted path. The run folder is complete (`manifest.json`, `mission.yaml`, `belief.json`, `plans/` × 2, the four logs, `end.json`). States `starting` → `running` → `requesting` → `running` → `done`. `~/stop` after `done` is refused |
+| [R4] Belief restarted | 3 | `grid_seq` 143 → 1. The node counts the restart, writes `belief_restart` to `events.jsonl` and uses the new grid |
+| [R5] shutdown | 1 | SIGINT: exit code 0, no traceback |
+| [R6] second bring-up | 2 | Both nodes of this package started **by their launch files**; Belief with its **default** coverage rule. The emulator is the one publisher of `/sss_ai/detections`; it reads the pings BEST_EFFORT and is matched |
+| [R7] a C4 mission at real speed (23 min) | 10 | Runs to `done` (τ 1330 of B = 1399 s; 643 s of return visits). **10 decisions: 5 REPLACE, all sent and accepted; 5 CONTINUE. 6 requests, 6 accepted, 0 refused, 0 missed leads.** Emulator: 310 arrays (290 empty) for 665 m sailed = 311.6 image strides; 20 detections, class "unclassified", unique ids. Belief: `negative_evidence: gated`, `coverage_source: arrays`, every one of the 12 600 cells searched from at least one sector; 7 contacts (4 confirmed), each within 3 m of a made-up object, so the emulator's world frame and Belief's map frame agree through the transform. Decisions: labels `model-conditional`, `planner-placeholders`, `score-conditional` (no `belief-ungated`); horizon from the stamp in all ten, 10.6 to 15.0 path-s behind the boat (one to two image strides plus the 6 s tracking margin); grid age 0.1 to 0.9 s. **Decision time: mean 0.46 s, slowest 1.74 s (the first decision, 7 candidates), none over the 2.0 s allowance; smallest lead left 2.05 path-s against the 2.0 needed.** Both launches end cleanly on SIGINT (exit code 0) |
+
+- **The other runs of that evening** (run 4 is the result above):
+  1. 20:57, the first bring-up only: 28 checks, 0 failed.
+  2. about 21:07, with the second bring-up and the C4 mission on a path clock ten times faster
+     than real time: 40 of 41 passed. **3 of 6 requests were refused by the made-up Control
+     (`lead_too_short`)**, the three whose decisions took 0.7 to 1.8 s. Two causes: the speed-up
+     (a second of computing cost ten path seconds), and a defect it exposed: the node did not
+     count a decision's own compute time before sending (DESIGN §5.2 rule 2; corrected).
+  3. real speed, on the node as it was: stopped by this session after 5 minutes, to run again
+     on the corrected node (run 4, the result above).
+  5. 21:52, after run 4: `.claude/tools/ros_check.sh` itself, with `--c4-speedup 10` to keep it
+     short: the script builds and runs (42 checks, 0 failed; at that speed refusals are not
+     judged). **It shows the corrected rule acting under ROS: the node itself dropped 2 late
+     decisions (`missed_lead`, lead left down to 0.56 path-s) and sent none of them.** 2 other
+     requests were still refused, because a path clock ten times faster than real time breaks
+     the bound the rule relies on (τ advances by at most 1 path-s per second).
+- **Not covered:** Control's node and its real timing; Gazebo; simulated time; a real sonar
+  image; Perception; image records; a node that joins long after Belief; the decision time on a
+  machine loaded by a simulator; `class_info:=true`; a built world.
 
 ## L-0 Revisions
 
-- [ ] L-0.1 Record the revision of every module in `~/ros2_ws/src/BlueBoat-SideScanSonar/`.
-  `git -C <module> log -1 --format=%H` for each module, plus BlueBoat-Belief. Diff them against
-  the cloud revisions in `PHASE0_VERIFICATION.md` §0. If Control differs from `1fadbb2`, re-verify
-  `PHASE0_VERIFICATION.md` §1 against `docs/PATH_UPDATE_INTERFACE.md` and
-  `_custom_libraries/path_update.py`.
+- [ ] L-0.1 Before a run with a neighbour, record the revision of every module in
+  `~/ros2_ws/src/BlueBoat-SideScanSonar/` (`git -C <module> log -1 --format=%H`, plus
+  `git -C <module> status --short`; for Belief also the core hash of
+  `eval/belief_real.belief_info()`). The Control facts this module relies on
+  (`EVIDENCE_REGISTER.md` E-01…E-26) were read at Control `1fadbb2`: if Control's
+  `_custom_libraries/path_update.py` or `docs/PATH_UPDATE_INTERFACE.md` changed since, re-read
+  those rows against them. The gate's cross-check with `PathUpdater` ([8], [21]) runs on the
+  current tree.
 
 ## L-C Control path update (brief §7.1, re-verified on the machine)
 
@@ -48,39 +110,43 @@ turns) → L-G1…L-G4 (Gazebo missions) → L-B5/L-B6/L-B7 (latency, model, dev
   ```bash
   ros2 service type /blueboat/update_path
   ```
-  Both must equal `PHASE0_VERIFICATION.md` §1.1.
+  Both must match Control's `docs/PATH_UPDATE_INTERFACE.md` §2–§4 (fields of E-02).
 - [ ] L-C4 Check progress and event QoS: `ros2 topic info -v /blueboat/path_progress` (reliable,
   volatile, depth 10) and `/blueboat/path_update_event` (reliable, depth 50).
 
 ## L-B Belief (contract `belief_grid/0`)
 
-- [ ] L-B1 Find Belief's location, build and node names. Check the topic name
-  (`/belief_map/belief_grid` provisional) and QoS with `ros2 topic info -v`. The publisher must
-  offer TRANSIENT_LOCAL for the consumer of contract C-2.
-- [ ] L-B2 Find the topic and type Belief subscribes for evidence: `/sss_ai/image_records` (root
-  CLAUDE.md) or `/sss_ai/detections` (contract C-1). See Q-9.
-- [ ] L-B3 Find Belief's datum: the mission `geo_anchor`? Check the `odom_to_map_*` form
-  (translation only, or with rotation) and its value in simulation and on the real boat.
-- [ ] L-B4 Diff Belief's `docs/CONTRACT_PROVIDED.md` against this module's
-  `docs/CONTRACT_CONSUMED.md`, field by field (C-9).
+- [x] L-B1 **Live topic and QoS.** Seen on 2026-11-12 on the isolated graph, with both nodes
+  up, through the graph API (`get_publishers_info_by_topic`, `get_subscriptions_info_by_topic`):
+  `belief_map` publishes and `replanner` subscribes `/belief_map/belief_grid`, RELIABLE and
+  TRANSIENT_LOCAL on both ends; the grids arrive and `grid_seq` advances by exactly 1 (L-X [R1],
+  [R2]).
+- [x] L-B2 **Belief's evidence topics.** `/sss_ai/detections` (required) and
+  `/sss_ai/image_records` (optional, exact detector coverage). Source: Belief `topics.md` §1.
+  The emulator publishes detections only, one array per image.
+- [x] L-B3 **Datum and transform.** Datum = the survey area's `geo_anchor` (a world
+  `metadata.yaml` or a `blueboat_survey_area/1` file); `odom_to_map` is a translation, yaw 0 by
+  construction; `odom_to_map_valid` is false until Belief's GPS / odom fit has 10 pairs. Source:
+  Belief `topics.md` §2. The Replanner refuses an unaligned grid (gate [20], on a real grid).
+- [x] L-B4 **Field-by-field diff.** Done: `CONTRACT_CONSUMED.md` (rewritten 2026-11-12). No
+  field of `belief_grid/0` is missing or renamed; nine fields are now read by their meaning.
+- [x] L-B5 **Belief's latency.** It is not a constant to measure: Belief publishes it. The
+  grid's header stamp is the evidence horizon (Belief `topics.md` §2). Measured through Belief's
+  core in its live-like mode: 6.5 s behind the boat on a straight pass at 0.5 m/s, between one
+  and two image strides (gate [20]). The planner uses the stamp (MATH §11.3); `t_lat` = 10 s is
+  only the fallback. **Open under ROS:** that Control's `ros_time` and the sonar stamps are one
+  clock in simulation (they should both be sim time), seen in a live run.
+- [x] L-B6 **Belief's detection model and looks.** Read in Belief's code and `MATH.md`:
+  - PD: a trapezoid, plateau 0.7 on [3, 25] m from the transducer with 3 m ramps; no class
+    dependence. The planner keeps its box and reads misses at their recorded strength (MATH §6, §7);
+  - ρ: Paull's pairwise rule on the folded line angle (`paull_pairwise`, `fold_opposite`);
+  - a look: a run of pings from one directed sector with gaps ≤ 20 s. There is no "pass";
+  - confirmation: two detected looks, not necessarily from different sectors;
+  - in a turn the inner side beyond r* = v/|ω| counts for nothing.
+  The reading of `coverage` as a class-mixture residual (MATH §9.1) is kept, with `n_i` now the
+  number of folded sectors a detector searched.
 
-- [ ] L-B5 (closure C) **Measure Belief's latency.** In a C3/C4 development run, measure the time
-  from a contact passing abeam (`/blueboat/odom` pose, the contact's known position) to the first
-  `/belief_map/belief_grid` snapshot whose contact `updated` stamp or sector sets reflect that look.
-  It sets `t_lat` (10 s placeholder). Expect a few seconds: GCS images every 128 rows ≈ 6.4 s at
-  20 Hz, plus Perception, plus Belief at ~1 Hz.
-- [ ] L-B6 (closure A, F) **Belief's detection model.** Read Belief's PD(range) window and plateau,
-  its class dependence and its ρ, from its code and `model_params_json`. Compare them with the
-  planner's PD_r (0.7 on [3, 25] m). Decide which reading of `coverage` applies (MATH §9.1: a
-  class-mixture residual, chosen, vs a unit-detectability residual) and record it in
-  `CONTRACT_DEVIATIONS.md`.
-  Also read **how Belief segments passes** (per line, per heading change, per time gap). In the
-  reference belief every plan segment is a pass, so any revisit can confirm a contact. That
-  drives the dev-loop result that C4_rand ≈ C4 (`DEVLOOP.md` §5.2 item 4). If Belief's
-  definition differs, re-run the dev loop on the real core (L-B7) before reading anything into
-  the C4 ablations.
-
-## L-K Kinematics (Q-6)
+## L-K Kinematics
 
 - [ ] L-K1 Measure turn time and settle time in Gazebo. Use a replanner run with arcs of radius
   1.5 / 3 / 6 m at 0.3 / 0.4 m/s, for PID, LoS and MPC. Measure the cross-track error after the
@@ -94,11 +160,11 @@ turns) → L-G1…L-G4 (Gazebo missions) → L-B5/L-B6/L-B7 (latency, model, dev
 - [ ] L-K4 Turn feasibility of the generated plans: Dubins arcs of r_turn = 3 m at 0.5 m/s
   (yaw rate 9.5 °/s). Measure the cross-track error at the junctions and inside the turns.
 
-- [ ] L-C5 (closure E) **Information only; the design does not depend on it.** Send a first path whose
+- [ ] L-C5 (MATH §3.5) **Information only; the design does not depend on it.** Send a first path whose
   first-sample yaw differs from the boat's by 90° and by 180°: a straight line, 0.5 m/s, PID/LoS/MPC.
   Record the time and the excursion until cross-track < 0.3 m. This checks Control's "the boat turns
   in place" statement (interface §5). The replanner itself always starts with the boat's yaw.
-- [ ] L-C6 (closure D) **Stop semantics, live.**
+- [ ] L-C6 (DESIGN §5.3) **Stop semantics, live.**
   1. In a replanner run, call `/replanner/stop`. Expect the status sequence `stop_requested` →
      `stop_accepted` → `stopped_holding`, with Control's `end_reached` for the stop id.
   2. Repeat while a manual target is engaged. Expect the truncation refused with
@@ -107,76 +173,118 @@ turns) → L-G1…L-G4 (Gazebo missions) → L-B5/L-B6/L-B7 (latency, model, dev
   3. Engage arrows during `running`. Expect status `disarmed`, and no request after release until
      `/replanner/start`.
 
-## L-S Swath (Q-2)
+## L-S Swath
 
 - [ ] L-S1 Get the usable ground range r_near and r_far at 20 m range: from Perception image
   records (`sides.*.ground_range_m`) over a GCS session in a built world at depths 1–3 m, and from
   the 2026-10-27 field sessions.
 
-## L-O Odometry (Q-5)
+## L-O Odometry
 
 - [ ] L-O1 If odometry is subscribed: check `/blueboat/odom` stamps and arrival rate in
   simulation and in a real run bag (`ros2 bag info`, `ros2 topic hz`).
 
-## L-R Replanner node (Phase 4 code, written in the cloud and never run)
+## L-R Replanner node (first run under ROS on 2026-11-12, section L-X)
 
-- [ ] L-R1 Build. `blueboat_belief_interfaces` must exist (Belief's package) and so must
-  `blueboat_interfaces`.
+- [x] L-R1 Build. **Done into `~/ros2_ws/install` on 2026-11-13**:
   ```bash
-  cd ~/ros2_ws && colcon build --packages-select blueboat_interfaces blueboat_replanner
+  cd ~/ros2_ws && env -i HOME=$HOME PATH=/usr/bin:/bin bash -c 'source /opt/ros/jazzy/setup.bash \
+    && source install/setup.bash && colcon build --packages-select blueboat_replanner'
   ```
-  Expect a clean build with 0 errors.
-- [ ] L-R2 Run the offline gate in the workspace: `cd src/BlueBoat-SideScanSonar/BlueBoat-Replanner/blueboat_replanner && /usr/bin/python3 -m test.smoke_test`.
-  Expect `SMOKE: 187 passed, 0 failed, 1 skipped` (cloud, 2026-11-04), the skip being the
-  real-Belief check of [20] until L-B7. With a sourced ROS workspace [24] still uses its
-  stand-in modules (it replaces them in `sys.modules` and restores them afterwards).
-- [ ] L-R3 Start the node and inspect its graph.
+  (a shell without the venv; plain install, like the rest of the workspace). `1 package
+  finished` in 1.5 s. Installed: `lib/blueboat_replanner/{replanner_node,
+  replanner_emulator_node, replanner-devloop}`, `share/blueboat_replanner/config/{replanner,
+  c2_tuned, mission_example}.yaml` and both launch files; the node's default `c2_tuned_file`
+  resolves to the installed `c2_tuned.yaml`. `colcon test --packages-select blueboat_replanner`
+  runs the gate (`test/test_gate.py`, pytest): 1 test, 0 failures, 74 s. No node was started.
+  Earlier, on 2026-11-12, into a scratch install base (`.claude/tools/ros_check.sh`, which still
+  builds its own):
+  `colcon build --base-paths <this repo> --packages-select blueboat_replanner --build-base …
+  --install-base …`, with `blueboat_interfaces`, `blueboat_belief_interfaces` and
+  `blueboat_belief` read from `~/ros2_ws/install`. Result: `1 package finished` in 1 to 3 s, no
+  error (the only output on the error stream is "byte-compiling is disabled", which the script
+  asks for). Both executables and both launch files are installed.
+- [x] L-R2 The offline gate on this machine, 2026-11-13:
+  `cd blueboat_replanner && /usr/bin/python3 -B -m test.smoke_test` → **`SMOKE: 278 passed,
+  0 failed, 0 skipped`**; the same with `~/ros2_ws/.venv/bin/python3`. Sections [20] and [22]
+  need the BlueBoat-Belief checkout beside this repository (they skip visibly without it).
+  **Also run from a shell with the ROS workspace sourced** (2026-11-13, the package installed
+  in `~/ros2_ws/install`): 278 passed.
+  [24] replaces the ROS modules in `sys.modules` by its fake ones and restores them afterwards.
+  The first run there failed one check of [20]: the binding had loaded Belief's installed copy
+  and not its checkout (corrected: the checkout comes first, `REAL_BELIEF_BINDING.md`).
+- [x] L-R3 Start the node and inspect its graph.
   ```bash
   ros2 launch blueboat_replanner replanner_launch.py mission_file:=<abs mission.yaml>
   ```
-  Then `ros2 node info /replanner`. Expect these subscriptions: `/belief_map/belief_grid`,
-  `/blueboat/path_progress`, `/blueboat/path_update_event`, `/blueboat/odom`. Expect the
-  publishers `/replanner/plan`, `/replanner/decision`, `/replanner/status`, the services
-  `/replanner/start` and `/replanner/stop`, and the client `/blueboat/update_path`.
-- [ ] L-R4 Check QoS: `ros2 topic info -v /belief_map/belief_grid` must show RELIABLE and
-  TRANSIENT_LOCAL on both ends (contract C-2). If Belief offers VOLATILE, change `BELIEF_QOS`
-  in `ros/adapters.py` and record the change in `CONTRACT_DEVIATIONS.md`.
-- [ ] L-R5 Check the adapter on the real message.
-  ```bash
-  ros2 topic echo --once /belief_map/belief_grid --qos-durability transient_local
-  ```
-  Feed it through `grid_to_dict` → `validate_grid`. Any `ContractError` names the field to
-  reconcile, and the fix is one line in `GRID_FIELDS` / `CONTACT_FIELDS`.
-- [ ] L-R6 Inspect status and decisions: `ros2 topic echo /replanner/status` (state sequence per
-  DESIGN §7), and check that `/replanner/decision` JSON validates against topics.md §5.1.
+  Expected, and **seen on 2026-11-12** (L-X [R1]; started from its executable in the first
+  bring-up and from its launch file in the second): subscriptions `/belief_map/belief_grid`,
+  `/blueboat/path_progress`, `/blueboat/path_update_event`, `/blueboat/odom`; publishers
+  `/replanner/plan`, `/replanner/decision`, `/replanner/status` with their types; services
+  `/replanner/start` and `/replanner/stop` (`std_srvs/srv/Trigger`); the client
+  `/blueboat/update_path`, used with the real service type.
+- [x] L-R4 QoS: RELIABLE and TRANSIENT_LOCAL on both ends of `/belief_map/belief_grid`
+  (contract C-2), seen on the live graph (L-B1). The node's profile needed no change.
+- [x] L-R5 The adapter on the real message: the node passes every live `BeliefGrid` through
+  `grid_to_dict` → `validate_grid`. No `ContractError`; the decision records carry
+  `belief_fallbacks: []`; a grid of an unaligned Belief is received and refused with its reason
+  in the status (L-X [R2]). No line of `GRID_FIELDS` / `CONTACT_FIELDS` had to change.
+- [x] L-R6 Status and decisions: the state sequence of a C3 run is `starting` → `running` →
+  `requesting` → `running` → `done` (`status.jsonl`), the status is latched, and every
+  `/replanner/decision` carries the required keys of topics.md §5.1 (L-X [R3], [R7]).
 
 ## L-E Detection emulator node (eval/ only)
 
-- [ ] L-E1 Settle the evidence topic first (Q-9, L-B2). If Belief reads `/sss_ai/detections`,
-  run:
+**On the isolated graph (2026-11-12, L-X [R6]–[R7]):** the node ran from its launch file on a
+made-up world file and made-up pings: one array per seabed image, empty ones included (310 for
+311.6 strides); Belief's coverage source `arrays`, its negative evidence gated; one publisher on
+the topic; Belief's contacts within 3 m of the objects. **Still to do in a built world, in
+Gazebo:** everything below, with the calibrator of that world and the look-by-look comparison.
+
+- [ ] L-E1 Run the emulator (Belief reads `/sss_ai/detections`; settled, L-B2):
   ```bash
   ros2 launch blueboat_replanner emulator_launch.py world_dir:=<world> seed:=1 calib_a:=<a> calib_b:=<b>
   ```
-  Take a and b from `results/devloop_2026-11-04/main/manifest.json` → `calibration`
-  (dev loop: a = 2.136, b = 0.478 — fitted on the dev-loop world, so refit it on Gazebo C2 runs of
-  the calibration worlds before any reported result). If Belief reads
-  `/sss_ai/image_records`, the `image_records` output must be written first (it raises today).
+  Take a and b from the `calibration` block of the dev-loop manifest
+  (`results/devloop_real_<date>/main/manifest.json`). They are fitted on the dev-loop world: refit
+  them on Gazebo C2 runs of the calibration worlds before any reported result.
+  Expect on `/sss_ai/detections`: **one array per seabed image, empty ones included** (about one
+  every 4.3 s at 0.5 m/s), and Belief's `/diagnostics` `coverage.source` = `arrays` with
+  `stats.pings_covered` growing. With `class_info:=true` the class is the object's type in the
+  world file: Belief keeps it as `other` unless its `detector.class_names` lists it.
 - [ ] L-E2 Run the emulator INSTEAD of Perception: `ros2 node list` must not show
   `perception_node`. One publisher on `/sss_ai/detections`.
-- [ ] L-E3 Check pass segmentation: the emulator splits passes on > 30° heading changes. Check
-  that each object gets at most one draw per pass (`ros2 topic echo /sss_ai/detections`).
+- [ ] L-E3 Check the draws: the emulator draws once per look at an object, a look being a run
+  of pings from one aspect sector with gaps ≤ 20 s, as in Belief (`eval/emulator.py`). Compare
+  the looks it counts with Belief's `aspect_counts` at the objects' cells (the dev loop does this
+  after every mission and finds no difference).
 
-## L-B7 Real Belief binding for the dev loop
+## L-B7 Binding to BlueBoat-Belief's core for the dev loop
 
-- [ ] Write `eval/belief_real.py` implementing `BeliefPort` (`feed_swath`, `feed_detections`,
-  `end_passes`, `snapshot` → `to_grid_dict`) over Belief's ingestion API. Then:
-  - re-run gate [20] against the real core (> 97 % agreement both ways);
-  - re-run `eval/runner.py` with the real backend, and re-state every dev-loop number.
+- [x] `eval/belief_real.py` written on Belief's `OFFLINE_CORE_API.md` (2026-11-12);
+  `REAL_BELIEF_BINDING.md` says how.
+- [x] Gate [20] against Belief's core: straight line 100 % both ways, a path with turns 99.9 %
+  (92.9 % without the turn gate); grid accepted with no fallback; unaligned grid refused; contact
+  fields; no detector → nothing searched; evidence horizon; determinism.
+- [x] **Dev loop on Belief's core, 2026-11-12, 19:27–20:12:**
+  `.claude/tools/devloop_batches.sh devloop_real_2026-11-12 4` → exit 0. C2 frozen (f = 1.0, long
+  axis, interlace auto, B = 2111 s; `config/c2_tuned.yaml` sha256 `f0bba92ffd4168bb…`), then 690
+  missions: none failed, 0 refusals, 0 missed leads, 0 differences between the emulator's looks
+  and Belief's. Results: `DEVLOOP.md` §5; outputs: `results/devloop_real_2026-11-12/`.
 
-## L-G Gazebo missions (Phase 4; Q-12)
+## L-G Gazebo missions
 
-Until R-3 lands, use the development composition (Q-12 b). The sonar renders the world folder
-from the pose, while Gazebo flies the boat in the stock ocean world (no walls or limits).
+Until R-3 lands (a `path_source` argument in SSS-Sim's `full_mission_launch.py`, RQ-1), use a
+development composition: the sonar renders the world folder from the pose, while Gazebo flies
+the boat in the stock ocean world (no walls or limits).
+
+**Clock, to settle before L-G1.** `replanner_launch.py` declares no `use_sim_time`, and the node
+measures freshness, timeouts and its decision time on the wall clock. Under Gazebo, Control's
+`ros_time` and the sonar stamps are sim time; the evidence horizon is converted through
+Control's (`ros_time`, τ) pairs, so it does not need the node's clock (MATH §11.3). Check in
+L-G1 that `/replanner/decision` names `source: stamp` for the horizon; if the simulation runs
+slower than real time (the ray-cast sonar), wall-clock freshness and lead margins are
+conservative, not wrong.
 Use separate terminals, each sourced with `source ~/ros2_ws/env.sh`:
 
 ```bash
@@ -189,8 +297,11 @@ ros2 launch blueboat_sss_sim sss_sim_launch.py world_dir:=$HOME/worlds/<path>/<w
 ros2 launch blueboat_sss SSS_processing_launch.py
 ```
 ```bash
-<Belief's launch — its name is unknown in the cloud (L-B1)>
+ros2 launch blueboat_belief belief_launch.py area_file:=<area.yaml> use_sim_time:=true
 ```
+The area file comes from the mission file, so the two cannot differ:
+`ros2 run blueboat_belief blueboat-belief-make-area --out area.yaml --from-mission <mission.yaml>`.
+The Replanner refuses a mission whose polygon is not inside Belief's area.
 ```bash
 ros2 launch blueboat_replanner emulator_launch.py world_dir:=$HOME/worlds/<path>/<world> seed:=1 calib_a:=<a> calib_b:=<b>
 ```

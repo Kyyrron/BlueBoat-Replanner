@@ -1,0 +1,107 @@
+{
+ "name": "budget_merged",
+ "label": "real-Belief dev loop, preliminary",
+ "seeds": [
+  2000,
+  2001,
+  2002,
+  2003,
+  2004,
+  2005,
+  2006,
+  2007,
+  2008,
+  2009,
+  2010,
+  2011,
+  2012,
+  2013,
+  2014,
+  2015,
+  2016,
+  2017,
+  2018,
+  2019
+ ],
+ "conditions": [
+  "C2",
+  "C3",
+  "C4",
+  "C4_iso",
+  "C4_rand"
+ ],
+ "fractions": [
+  1.0,
+  0.75,
+  0.5
+ ],
+ "scenario": {
+  "width_m": 100.0,
+  "height_m": 60.0,
+  "depth_m": 2.0
+ },
+ "calibration": {
+  "a": 2.13503061761049,
+  "b": 0.5188087657976446,
+  "note": "Platt on C2 detections, seeds 900-919",
+  "n": 355,
+  "real_fraction": 0.6140845070422535
+ },
+ "calibration_seeds": [
+  900,
+  901,
+  902,
+  903,
+  904,
+  905,
+  906,
+  907,
+  908,
+  909,
+  910,
+  911,
+  912,
+  913,
+  914,
+  915,
+  916,
+  917,
+  918,
+  919
+ ],
+ "module_revision": "c53fe2a+uncommitted",
+ "python": "3.12.3",
+ "numpy": "1.26.4",
+ "belief_backend": "BlueBoat-Belief core (offline interface)",
+ "belief": {
+  "package": "blueboat_belief",
+  "version": "0.1.0",
+  "revision": "093841a",
+  "uncommitted_changes": true,
+  "core_sha256": "fcd9531597e593b34cf666210f7aa59e98b237b478df6a53090206f6f6649ebb",
+  "core_files": 14,
+  "gate": {
+   "checks": 240,
+   "skipped": 0,
+   "source": "BlueBoat-Belief docs/VALIDATION_REPORT.md"
+  },
+  "location": "/home/kyyrron/ros2_ws/src/BlueBoat-SideScanSonar/BlueBoat-Belief/blueboat_belief/blueboat_belief",
+  "interface": "docs/OFFLINE_CORE_API.md"
+ },
+ "miss_credit": "records",
+ "class_info": "none",
+ "world": "eval/world.py WORLD_DEFAULTS (matched to planner placeholders)",
+ "c2_tuned": {
+  "file": "config/c2_tuned.yaml",
+  "sha256": "f0bba92ffd4168bbc5273c2ca8c2e7e57a35e24862bee8dcda0b279abfda496f",
+  "settings": {
+   "spacing_factor": 1.0,
+   "pass1_direction": "long_axis",
+   "interlace": "auto"
+  }
+ },
+ "merged_from": [
+  "/home/kyyrron/ros2_ws/src/BlueBoat-SideScanSonar/BlueBoat-Replanner/results/devloop_real_2026-11-12/main",
+  "/home/kyyrron/ros2_ws/src/BlueBoat-SideScanSonar/BlueBoat-Replanner/results/devloop_real_2026-11-12/budget_sweep"
+ ]
+}

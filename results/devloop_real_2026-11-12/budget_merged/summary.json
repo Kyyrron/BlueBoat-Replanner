@@ -1,0 +1,998 @@
+{
+ "label": "real-Belief dev loop, preliminary",
+ "groups": [
+  {
+   "condition": "C2",
+   "fraction": 1.0,
+   "n": 20,
+   "score": [
+    1.65,
+    1.8431951662948316
+   ],
+   "confirmed_true": [
+    3.15,
+    1.3484884325167863
+   ],
+   "false_confirmations": [
+    1.5,
+    1.1002392084403616
+   ],
+   "recall_detected": [
+    4.5,
+    0.9459053029269173
+   ],
+   "revisit_time_s": 0.0,
+   "decision_time_mean_s": 0.0,
+   "decision_time_max_s": 0.0,
+   "refusals": 0,
+   "missed_lead": 0,
+   "aspects_mean": 2.225,
+   "ece": 0.047574470976881056,
+   "mission_stops": 0,
+   "belief": {
+    "look_mismatch": 0,
+    "looks_tracked": 1633,
+    "draws_within_look_timeout": 14,
+    "horizon_lag_mean_s": null,
+    "horizon_lag_max_s": null,
+    "detections_mean": 16.8
+   },
+   "anytime": {
+    "0.25": {
+     "confirmed_true": 0.45,
+     "score": 0.3
+    },
+    "0.5": {
+     "confirmed_true": 1.4,
+     "score": 0.95
+    },
+    "0.75": {
+     "confirmed_true": 2.1,
+     "score": 1.1
+    },
+    "1.0": {
+     "confirmed_true": 3.15,
+     "score": 1.65
+    }
+   }
+  },
+  {
+   "condition": "C3",
+   "fraction": 1.0,
+   "n": 20,
+   "score": [
+    1.7,
+    1.8381913307436342
+   ],
+   "confirmed_true": [
+    3.55,
+    1.234376040972246
+   ],
+   "false_confirmations": [
+    1.85,
+    1.1821033884786185
+   ],
+   "recall_detected": [
+    4.9,
+    0.9119095061289914
+   ],
+   "revisit_time_s": 416.6161746048192,
+   "decision_time_mean_s": 0.03166543130004129,
+   "decision_time_max_s": 0.061262877000217486,
+   "refusals": 0,
+   "missed_lead": 0,
+   "aspects_mean": 2.6249999999999996,
+   "ece": 0.04485076024744619,
+   "mission_stops": 0,
+   "belief": {
+    "look_mismatch": 0,
+    "looks_tracked": 1794,
+    "draws_within_look_timeout": 18,
+    "horizon_lag_mean_s": 6.7999999999999545,
+    "horizon_lag_max_s": 6.7999999999999545,
+    "detections_mean": 18.3
+   },
+   "anytime": {
+    "0.25": {
+     "confirmed_true": 0.45,
+     "score": 0.3
+    },
+    "0.5": {
+     "confirmed_true": 1.4,
+     "score": 0.95
+    },
+    "0.75": {
+     "confirmed_true": 3.05,
+     "score": 1.75
+    },
+    "1.0": {
+     "confirmed_true": 3.55,
+     "score": 1.7
+    }
+   },
+   "paired_vs_C2": {
+    "n": 20,
+    "mean_diff": 0.05,
+    "sd": 1.0500626547722611,
+    "ci95_approx": [
+     -0.41960229534093396,
+     0.5196022953409339
+    ],
+    "better": 5,
+    "equal": 10,
+    "worse": 5,
+    "targets_confirmed_only_here": 10,
+    "targets_confirmed_only_by_C2": 2
+   }
+  },
+  {
+   "condition": "C4",
+   "fraction": 1.0,
+   "n": 20,
+   "score": [
+    2.35,
+    1.0894228312566052
+   ],
+   "confirmed_true": [
+    3.95,
+    1.0500626547722611
+   ],
+   "false_confirmations": [
+    1.6,
+    0.99472291830968
+   ],
+   "recall_detected": [
+    4.85,
+    0.9880869341680845
+   ],
+   "revisit_time_s": 796.0152147578542,
+   "decision_time_mean_s": 0.6120184295282077,
+   "decision_time_max_s": 2.2674645189999865,
+   "refusals": 0,
+   "missed_lead": 0,
+   "aspects_mean": 3.7583333333333337,
+   "ece": 0.06009553773932545,
+   "mission_stops": 0,
+   "belief": {
+    "look_mismatch": 0,
+    "looks_tracked": 1839,
+    "draws_within_look_timeout": 27,
+    "horizon_lag_mean_s": 6.757515429015425,
+    "horizon_lag_max_s": 8.700000000000045,
+    "detections_mean": 19.8
+   },
+   "anytime": {
+    "0.25": {
+     "confirmed_true": 0.75,
+     "score": 0.6
+    },
+    "0.5": {
+     "confirmed_true": 2.4,
+     "score": 1.8
+    },
+    "0.75": {
+     "confirmed_true": 3.15,
+     "score": 2.15
+    },
+    "1.0": {
+     "confirmed_true": 3.95,
+     "score": 2.35
+    }
+   },
+   "paired_vs_C2": {
+    "n": 20,
+    "mean_diff": 0.7,
+    "sd": 1.525226471535845,
+    "ci95_approx": [
+     0.017897985712740483,
+     1.3821020142872595
+    ],
+    "better": 10,
+    "equal": 7,
+    "worse": 3,
+    "targets_confirmed_only_here": 18,
+    "targets_confirmed_only_by_C2": 2
+   }
+  },
+  {
+   "condition": "C4_iso",
+   "fraction": 1.0,
+   "n": 20,
+   "score": [
+    2.2,
+    1.6733200530681511
+   ],
+   "confirmed_true": [
+    3.9,
+    1.252366181526625
+   ],
+   "false_confirmations": [
+    1.7,
+    0.9787209698591857
+   ],
+   "recall_detected": [
+    4.8,
+    0.9514531821875087
+   ],
+   "revisit_time_s": 716.2500358041755,
+   "decision_time_mean_s": 0.6637674929587807,
+   "decision_time_max_s": 2.244650945999865,
+   "refusals": 0,
+   "missed_lead": 0,
+   "aspects_mean": 3.6,
+   "ece": 0.05102566556805246,
+   "mission_stops": 0,
+   "belief": {
+    "look_mismatch": 0,
+    "looks_tracked": 1818,
+    "draws_within_look_timeout": 25,
+    "horizon_lag_mean_s": 6.825416527916529,
+    "horizon_lag_max_s": 8.700000000000045,
+    "detections_mean": 19.45
+   },
+   "anytime": {
+    "0.25": {
+     "confirmed_true": 0.8,
+     "score": 0.75
+    },
+    "0.5": {
+     "confirmed_true": 2.45,
+     "score": 1.75
+    },
+    "0.75": {
+     "confirmed_true": 3.25,
+     "score": 2.2
+    },
+    "1.0": {
+     "confirmed_true": 3.9,
+     "score": 2.2
+    }
+   },
+   "paired_vs_C2": {
+    "n": 20,
+    "mean_diff": 0.55,
+    "sd": 1.5719582155957417,
+    "ci95_approx": [
+     -0.15300108557226966,
+     1.2530010855722697
+    ],
+    "better": 9,
+    "equal": 6,
+    "worse": 5,
+    "targets_confirmed_only_here": 17,
+    "targets_confirmed_only_by_C2": 2
+   }
+  },
+  {
+   "condition": "C4_rand",
+   "fraction": 1.0,
+   "n": 20,
+   "score": [
+    1.9,
+    1.2096106376585989
+   ],
+   "confirmed_true": [
+    3.95,
+    1.0990426455975697
+   ],
+   "false_confirmations": [
+    2.05,
+    1.050062654772261
+   ],
+   "recall_detected": [
+    5.05,
+    0.8870412083230168
+   ],
+   "revisit_time_s": 824.9490157699809,
+   "decision_time_mean_s": 0.6449776874412834,
+   "decision_time_max_s": 2.2658402320000732,
+   "refusals": 0,
+   "missed_lead": 0,
+   "aspects_mean": 3.6833333333333336,
+   "ece": 0.05178436685819905,
+   "mission_stops": 0,
+   "belief": {
+    "look_mismatch": 0,
+    "looks_tracked": 1914,
+    "draws_within_look_timeout": 34,
+    "horizon_lag_mean_s": 6.598095571095563,
+    "horizon_lag_max_s": 8.700000000000045,
+    "detections_mean": 20.75
+   },
+   "anytime": {
+    "0.25": {
+     "confirmed_true": 0.65,
+     "score": 0.45
+    },
+    "0.5": {
+     "confirmed_true": 2.3,
+     "score": 1.7
+    },
+    "0.75": {
+     "confirmed_true": 3.55,
+     "score": 2.05
+    },
+    "1.0": {
+     "confirmed_true": 3.95,
+     "score": 1.9
+    }
+   },
+   "paired_vs_C2": {
+    "n": 20,
+    "mean_diff": 0.25,
+    "sd": 1.164157703189193,
+    "ci95_approx": [
+     -0.2706271521722118,
+     0.7706271521722118
+    ],
+    "better": 6,
+    "equal": 10,
+    "worse": 4,
+    "targets_confirmed_only_here": 19,
+    "targets_confirmed_only_by_C2": 3
+   }
+  },
+  {
+   "condition": "C2",
+   "fraction": 0.75,
+   "n": 20,
+   "score": [
+    0.9,
+    1.3337718577107005
+   ],
+   "confirmed_true": [
+    1.9,
+    1.0711528467275955
+   ],
+   "false_confirmations": [
+    1.0,
+    0.7947194142390263
+   ],
+   "recall_detected": [
+    4.0,
+    1.025978352085154
+   ],
+   "revisit_time_s": 0.0,
+   "decision_time_mean_s": 0.0,
+   "decision_time_max_s": 0.0,
+   "refusals": 0,
+   "missed_lead": 0,
+   "aspects_mean": 1.8083333333333331,
+   "ece": 0.06041031681414381,
+   "mission_stops": 0,
+   "belief": {
+    "look_mismatch": 0,
+    "looks_tracked": 1115,
+    "draws_within_look_timeout": 8,
+    "horizon_lag_mean_s": null,
+    "horizon_lag_max_s": null,
+    "detections_mean": 11.1
+   },
+   "anytime": {
+    "0.25": {
+     "confirmed_true": 0.3,
+     "score": 0.3
+    },
+    "0.5": {
+     "confirmed_true": 1.05,
+     "score": 0.65
+    },
+    "0.75": {
+     "confirmed_true": 1.55,
+     "score": 0.9
+    },
+    "1.0": {
+     "confirmed_true": 1.9,
+     "score": 0.9
+    }
+   }
+  },
+  {
+   "condition": "C3",
+   "fraction": 0.75,
+   "n": 20,
+   "score": [
+    1.55,
+    1.4680814547887788
+   ],
+   "confirmed_true": [
+    2.7,
+    1.0809352675491624
+   ],
+   "false_confirmations": [
+    1.15,
+    1.1367080817685316
+   ],
+   "recall_detected": [
+    4.25,
+    1.164157703189193
+   ],
+   "revisit_time_s": 362.6449147593343,
+   "decision_time_mean_s": 0.0344664195499945,
+   "decision_time_max_s": 0.06335001000002194,
+   "refusals": 0,
+   "missed_lead": 0,
+   "aspects_mean": 2.166666666666667,
+   "ece": 0.050646004511808326,
+   "mission_stops": 0,
+   "belief": {
+    "look_mismatch": 0,
+    "looks_tracked": 1265,
+    "draws_within_look_timeout": 14,
+    "horizon_lag_mean_s": 6.7999999999999545,
+    "horizon_lag_max_s": 6.7999999999999545,
+    "detections_mean": 13.05
+   },
+   "anytime": {
+    "0.25": {
+     "confirmed_true": 0.3,
+     "score": 0.3
+    },
+    "0.5": {
+     "confirmed_true": 1.05,
+     "score": 0.65
+    },
+    "0.75": {
+     "confirmed_true": 1.75,
+     "score": 1.0
+    },
+    "1.0": {
+     "confirmed_true": 2.7,
+     "score": 1.55
+    }
+   },
+   "paired_vs_C2": {
+    "n": 20,
+    "mean_diff": 0.65,
+    "sd": 1.1821033884786183,
+    "ci95_approx": [
+     0.12134729338579364,
+     1.1786527066142063
+    ],
+    "better": 13,
+    "equal": 3,
+    "worse": 4,
+    "targets_confirmed_only_here": 18,
+    "targets_confirmed_only_by_C2": 2
+   }
+  },
+  {
+   "condition": "C4",
+   "fraction": 0.75,
+   "n": 20,
+   "score": [
+    2.1,
+    1.2937094768634556
+   ],
+   "confirmed_true": [
+    3.25,
+    1.2513150976809202
+   ],
+   "false_confirmations": [
+    1.15,
+    0.9880869341680842
+   ],
+   "recall_detected": [
+    4.4,
+    0.9403246919632545
+   ],
+   "revisit_time_s": 583.2910324045807,
+   "decision_time_mean_s": 0.6717670691935269,
+   "decision_time_max_s": 2.280781552999997,
+   "refusals": 0,
+   "missed_lead": 0,
+   "aspects_mean": 3.2166666666666672,
+   "ece": 0.06295384069359607,
+   "mission_stops": 0,
+   "belief": {
+    "look_mismatch": 0,
+    "looks_tracked": 1473,
+    "draws_within_look_timeout": 30,
+    "horizon_lag_mean_s": 6.724123015873003,
+    "horizon_lag_max_s": 8.700000000000045,
+    "detections_mean": 15.95
+   },
+   "anytime": {
+    "0.25": {
+     "confirmed_true": 0.4,
+     "score": 0.4
+    },
+    "0.5": {
+     "confirmed_true": 1.75,
+     "score": 1.35
+    },
+    "0.75": {
+     "confirmed_true": 2.7,
+     "score": 1.8
+    },
+    "1.0": {
+     "confirmed_true": 3.25,
+     "score": 2.1
+    }
+   },
+   "paired_vs_C2": {
+    "n": 20,
+    "mean_diff": 1.2,
+    "sd": 1.3218806379747876,
+    "ci95_approx": [
+     0.6088370070695169,
+     1.791162992930483
+    ],
+    "better": 14,
+    "equal": 4,
+    "worse": 2,
+    "targets_confirmed_only_here": 32,
+    "targets_confirmed_only_by_C2": 5
+   }
+  },
+  {
+   "condition": "C4_iso",
+   "fraction": 0.75,
+   "n": 20,
+   "score": [
+    2.45,
+    1.3168942730211068
+   ],
+   "confirmed_true": [
+    3.35,
+    1.1367080817685318
+   ],
+   "false_confirmations": [
+    0.9,
+    0.9119095061289915
+   ],
+   "recall_detected": [
+    4.35,
+    1.089422831256605
+   ],
+   "revisit_time_s": 578.836348500098,
+   "decision_time_mean_s": 0.6377493742576263,
+   "decision_time_max_s": 2.4031983340000806,
+   "refusals": 0,
+   "missed_lead": 0,
+   "aspects_mean": 3.1833333333333327,
+   "ece": 0.06602166984056562,
+   "mission_stops": 0,
+   "belief": {
+    "look_mismatch": 0,
+    "looks_tracked": 1438,
+    "draws_within_look_timeout": 21,
+    "horizon_lag_mean_s": 6.645333874458862,
+    "horizon_lag_max_s": 8.700000000000045,
+    "detections_mean": 14.75
+   },
+   "anytime": {
+    "0.25": {
+     "confirmed_true": 0.3,
+     "score": 0.3
+    },
+    "0.5": {
+     "confirmed_true": 1.4,
+     "score": 0.95
+    },
+    "0.75": {
+     "confirmed_true": 2.7,
+     "score": 2.0
+    },
+    "1.0": {
+     "confirmed_true": 3.35,
+     "score": 2.45
+    }
+   },
+   "paired_vs_C2": {
+    "n": 20,
+    "mean_diff": 1.55,
+    "sd": 1.3168942730211068,
+    "ci95_approx": [
+     0.9610669772689276,
+     2.1389330227310723
+    ],
+    "better": 15,
+    "equal": 5,
+    "worse": 0,
+    "targets_confirmed_only_here": 31,
+    "targets_confirmed_only_by_C2": 2
+   }
+  },
+  {
+   "condition": "C4_rand",
+   "fraction": 0.75,
+   "n": 20,
+   "score": [
+    2.05,
+    1.2763022245616642
+   ],
+   "confirmed_true": [
+    3.15,
+    1.1367080817685316
+   ],
+   "false_confirmations": [
+    1.1,
+    0.9119095061289915
+   ],
+   "recall_detected": [
+    4.5,
+    0.9459053029269173
+   ],
+   "revisit_time_s": 591.3438599299349,
+   "decision_time_mean_s": 0.5857910415589543,
+   "decision_time_max_s": 2.1078843939999388,
+   "refusals": 0,
+   "missed_lead": 0,
+   "aspects_mean": 3.1083333333333334,
+   "ece": 0.06783260902614235,
+   "mission_stops": 0,
+   "belief": {
+    "look_mismatch": 0,
+    "looks_tracked": 1469,
+    "draws_within_look_timeout": 26,
+    "horizon_lag_mean_s": 6.675420093795088,
+    "horizon_lag_max_s": 8.700000000000045,
+    "detections_mean": 15.5
+   },
+   "anytime": {
+    "0.25": {
+     "confirmed_true": 0.25,
+     "score": 0.2
+    },
+    "0.5": {
+     "confirmed_true": 1.75,
+     "score": 1.35
+    },
+    "0.75": {
+     "confirmed_true": 2.65,
+     "score": 1.75
+    },
+    "1.0": {
+     "confirmed_true": 3.15,
+     "score": 2.05
+    }
+   },
+   "paired_vs_C2": {
+    "n": 20,
+    "mean_diff": 1.15,
+    "sd": 1.268027892769755,
+    "ci95_approx": [
+     0.5829206868802027,
+     1.7170793131197972
+    ],
+    "better": 12,
+    "equal": 7,
+    "worse": 1,
+    "targets_confirmed_only_here": 28,
+    "targets_confirmed_only_by_C2": 3
+   }
+  },
+  {
+   "condition": "C2",
+   "fraction": 0.5,
+   "n": 20,
+   "score": [
+    0.75,
+    1.292692009559488
+   ],
+   "confirmed_true": [
+    1.15,
+    0.9880869341680842
+   ],
+   "false_confirmations": [
+    0.4,
+    0.6805570473787207
+   ],
+   "recall_detected": [
+    3.3,
+    1.1285761872936695
+   ],
+   "revisit_time_s": 0.0,
+   "decision_time_mean_s": 0.0,
+   "decision_time_max_s": 0.0,
+   "refusals": 0,
+   "missed_lead": 0,
+   "aspects_mean": 1.25,
+   "ece": 0.08074771434789837,
+   "mission_stops": 0,
+   "belief": {
+    "look_mismatch": 0,
+    "looks_tracked": 729,
+    "draws_within_look_timeout": 6,
+    "horizon_lag_mean_s": null,
+    "horizon_lag_max_s": null,
+    "detections_mean": 7.1
+   },
+   "anytime": {
+    "0.25": {
+     "confirmed_true": 0.1,
+     "score": 0.1
+    },
+    "0.5": {
+     "confirmed_true": 0.45,
+     "score": 0.3
+    },
+    "0.75": {
+     "confirmed_true": 1.05,
+     "score": 0.65
+    },
+    "1.0": {
+     "confirmed_true": 1.15,
+     "score": 0.75
+    }
+   }
+  },
+  {
+   "condition": "C3",
+   "fraction": 0.5,
+   "n": 20,
+   "score": [
+    1.15,
+    1.6311119875071343
+   ],
+   "confirmed_true": [
+    1.9,
+    1.0711528467275955
+   ],
+   "false_confirmations": [
+    0.75,
+    0.7863975156570492
+   ],
+   "recall_detected": [
+    3.65,
+    1.1821033884786183
+   ],
+   "revisit_time_s": 145.68243779766343,
+   "decision_time_mean_s": 0.025217050050002854,
+   "decision_time_max_s": 0.05542723799999294,
+   "refusals": 0,
+   "missed_lead": 0,
+   "aspects_mean": 1.7416666666666667,
+   "ece": 0.06685223522822228,
+   "mission_stops": 0,
+   "belief": {
+    "look_mismatch": 0,
+    "looks_tracked": 902,
+    "draws_within_look_timeout": 13,
+    "horizon_lag_mean_s": 4.599999999999909,
+    "horizon_lag_max_s": 4.599999999999909,
+    "detections_mean": 9.35
+   },
+   "anytime": {
+    "0.25": {
+     "confirmed_true": 0.1,
+     "score": 0.1
+    },
+    "0.5": {
+     "confirmed_true": 0.45,
+     "score": 0.3
+    },
+    "0.75": {
+     "confirmed_true": 1.05,
+     "score": 0.65
+    },
+    "1.0": {
+     "confirmed_true": 1.9,
+     "score": 1.15
+    }
+   },
+   "paired_vs_C2": {
+    "n": 20,
+    "mean_diff": 0.4,
+    "sd": 1.231174022502185,
+    "ci95_approx": [
+     -0.1505977612893482,
+     0.9505977612893483
+    ],
+    "better": 11,
+    "equal": 3,
+    "worse": 6,
+    "targets_confirmed_only_here": 15,
+    "targets_confirmed_only_by_C2": 0
+   }
+  },
+  {
+   "condition": "C4",
+   "fraction": 0.5,
+   "n": 20,
+   "score": [
+    1.65,
+    1.2258187382102494
+   ],
+   "confirmed_true": [
+    2.2,
+    1.0563093645728086
+   ],
+   "false_confirmations": [
+    0.55,
+    0.7591546545162482
+   ],
+   "recall_detected": [
+    3.65,
+    0.8750939799154206
+   ],
+   "revisit_time_s": 380.8096167345998,
+   "decision_time_mean_s": 0.43233648372546857,
+   "decision_time_max_s": 1.8382216400000289,
+   "refusals": 0,
+   "missed_lead": 0,
+   "aspects_mean": 2.4749999999999996,
+   "ece": 0.09953528631299413,
+   "mission_stops": 0,
+   "belief": {
+    "look_mismatch": 0,
+    "looks_tracked": 949,
+    "draws_within_look_timeout": 22,
+    "horizon_lag_mean_s": 6.854285714285693,
+    "horizon_lag_max_s": 8.700000000000045,
+    "detections_mean": 9.7
+   },
+   "anytime": {
+    "0.25": {
+     "confirmed_true": 0.1,
+     "score": 0.1
+    },
+    "0.5": {
+     "confirmed_true": 0.7,
+     "score": 0.5
+    },
+    "0.75": {
+     "confirmed_true": 1.65,
+     "score": 1.15
+    },
+    "1.0": {
+     "confirmed_true": 2.2,
+     "score": 1.65
+    }
+   },
+   "paired_vs_C2": {
+    "n": 20,
+    "mean_diff": 0.9,
+    "sd": 1.1652874052533586,
+    "ci95_approx": [
+     0.378867629705829,
+     1.421132370294171
+    ],
+    "better": 14,
+    "equal": 4,
+    "worse": 2,
+    "targets_confirmed_only_here": 23,
+    "targets_confirmed_only_by_C2": 2
+   }
+  },
+  {
+   "condition": "C4_iso",
+   "fraction": 0.5,
+   "n": 20,
+   "score": [
+    1.55,
+    1.4317821063276355
+   ],
+   "confirmed_true": [
+    2.15,
+    1.2680278927697548
+   ],
+   "false_confirmations": [
+    0.6,
+    0.7539370349250518
+   ],
+   "recall_detected": [
+    3.75,
+    0.9665456669582609
+   ],
+   "revisit_time_s": 377.94218529999597,
+   "decision_time_mean_s": 0.4622401555057213,
+   "decision_time_max_s": 1.629822360999924,
+   "refusals": 0,
+   "missed_lead": 0,
+   "aspects_mean": 2.458333333333333,
+   "ece": 0.07732011606616045,
+   "mission_stops": 0,
+   "belief": {
+    "look_mismatch": 0,
+    "looks_tracked": 945,
+    "draws_within_look_timeout": 17,
+    "horizon_lag_mean_s": 7.041708333333318,
+    "horizon_lag_max_s": 8.700000000000045,
+    "detections_mean": 9.9
+   },
+   "anytime": {
+    "0.25": {
+     "confirmed_true": 0.1,
+     "score": 0.1
+    },
+    "0.5": {
+     "confirmed_true": 0.85,
+     "score": 0.7
+    },
+    "0.75": {
+     "confirmed_true": 1.7,
+     "score": 1.3
+    },
+    "1.0": {
+     "confirmed_true": 2.15,
+     "score": 1.55
+    }
+   },
+   "paired_vs_C2": {
+    "n": 20,
+    "mean_diff": 0.8,
+    "sd": 1.1964860832322377,
+    "ci95_approx": [
+     0.26491515675204913,
+     1.335084843247951
+    ],
+    "better": 14,
+    "equal": 3,
+    "worse": 3,
+    "targets_confirmed_only_here": 23,
+    "targets_confirmed_only_by_C2": 3
+   }
+  },
+  {
+   "condition": "C4_rand",
+   "fraction": 0.5,
+   "n": 20,
+   "score": [
+    1.65,
+    1.2680278927697548
+   ],
+   "confirmed_true": [
+    2.3,
+    0.9787209698591858
+   ],
+   "false_confirmations": [
+    0.65,
+    0.812727700887249
+   ],
+   "recall_detected": [
+    3.75,
+    1.0699237552766379
+   ],
+   "revisit_time_s": 400.00897394005165,
+   "decision_time_mean_s": 0.41461214761124127,
+   "decision_time_max_s": 1.6337826119997771,
+   "refusals": 0,
+   "missed_lead": 0,
+   "aspects_mean": 2.475,
+   "ece": 0.06841675440796802,
+   "mission_stops": 0,
+   "belief": {
+    "look_mismatch": 0,
+    "looks_tracked": 925,
+    "draws_within_look_timeout": 20,
+    "horizon_lag_mean_s": 6.660857142857125,
+    "horizon_lag_max_s": 8.700000000000045,
+    "detections_mean": 10.25
+   },
+   "anytime": {
+    "0.25": {
+     "confirmed_true": 0.1,
+     "score": 0.1
+    },
+    "0.5": {
+     "confirmed_true": 0.85,
+     "score": 0.65
+    },
+    "0.75": {
+     "confirmed_true": 1.65,
+     "score": 1.2
+    },
+    "1.0": {
+     "confirmed_true": 2.3,
+     "score": 1.65
+    }
+   },
+   "paired_vs_C2": {
+    "n": 20,
+    "mean_diff": 0.9,
+    "sd": 0.9679060415469872,
+    "ci95_approx": [
+     0.46713925905364023,
+     1.3328607409463598
+    ],
+    "better": 14,
+    "equal": 4,
+    "worse": 2,
+    "targets_confirmed_only_here": 23,
+    "targets_confirmed_only_by_C2": 0
+   }
+  }
+ ]
+}

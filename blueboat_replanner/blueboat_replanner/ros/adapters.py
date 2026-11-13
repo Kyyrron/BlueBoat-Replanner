@@ -13,8 +13,8 @@ import math
 
 import numpy as np
 
-# contract name -> name on the source object (identity until Belief's actual names are known;
-# CONTRACT_CONSUMED.md, LOCAL_CHECKLIST L-B4)
+# contract name -> name on the source object. Belief's names are the contract's
+# (BlueBoat-Belief core/contract.py GRID_FIELDS / CONTACT_FIELDS, read 2026-11-12).
 GRID_FIELDS = {
     "contract_version": "contract_version",
     "grid_seq": "grid_seq",
@@ -46,6 +46,8 @@ GRID_FIELDS = {
     "max_confidence": "max_confidence",
     "aspect_counts": "aspect_counts",
     "aspect_log_miss": "aspect_log_miss",
+    "area_x": "area_x",
+    "area_y": "area_y",
     "contacts": "contacts",
 }
 
@@ -67,9 +69,7 @@ CONTACT_FIELDS = {
     "has_shadow": "has_shadow",
 }
 
-BELIEF_TOPIC = "/belief_map/belief_grid"          # contract C-2, provisional
-# QoS of the BeliefGrid subscription (contract C-2): RELIABLE, TRANSIENT_LOCAL, KEEP_LAST 1.
-BELIEF_QOS = {"reliability": "reliable", "durability": "transient_local", "depth": 1}
+BELIEF_TOPIC = "/belief_map/belief_grid"          # contract C-2 (Belief topics.md §1)
 
 _MISSING = object()
 
@@ -81,13 +81,18 @@ def _get(obj, name):
 
 
 def _stamp(obj):
+    """The grid's header stamp in seconds: Belief's evidence horizon (MATH §11.3). Reads a ROS
+    message (header.stamp.sec / nanosec) and Belief's `to_grid_dict` (header["stamp"], a
+    float). None when there is none."""
     hdr = _get(obj, "header")
     if hdr is _MISSING or hdr is None:
         st = _get(obj, "stamp")
-        return None if st is _MISSING else st
-    st = _get(hdr, "stamp")
+    else:
+        st = _get(hdr, "stamp")
     if st is _MISSING or st is None:
         return None
+    if isinstance(st, (int, float)) and not isinstance(st, bool):
+        return float(st)
     sec, nsec = _get(st, "sec"), _get(st, "nanosec")
     if sec is _MISSING:
         return None
@@ -95,8 +100,13 @@ def _stamp(obj):
 
 
 def _value(v):
+    """Arrays stay arrays; a numpy scalar (Belief's `to_grid_dict` uses message dtypes, for
+    example `np.uint32` for `grid_seq`) becomes the Python scalar a ROS message would carry."""
+    if isinstance(v, np.generic):
+        return v.item()
     if isinstance(v, (list, tuple)) or hasattr(v, "__array__"):
-        return np.asarray(v)
+        a = np.asarray(v)
+        return a.item() if a.ndim == 0 else a
     return v
 
 

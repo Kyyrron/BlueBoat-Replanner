@@ -1,11 +1,15 @@
 # BlueBoat-Replanner — design
 
-Status: **built, 2026-11-04 (cloud session REPLAN-1).** The design was revised after the Phase 1
-consistency review (`PHASE1_CLOSURE.md`) and approved by the user ("move on to the next part of the
-work"). Phases 2–4 implemented it:
-- the ROS-free core and the dev loop are tested offline;
-- the ROS node and the emulator node are driven only through stand-in rclpy modules (gate [24]),
-  and have **never run under ROS** (`LOCAL_CHECKLIST.md` L-R, L-E, L-G).
+Status: **approved by the owner on 2026-11-04, built, and bound to BlueBoat-Belief's own core
+on 2026-11-12.**
+- the ROS-free core and the dev loop are tested offline; the dev loop's belief map is
+  BlueBoat-Belief's core, through its documented offline interface (`REAL_BELIEF_BINDING.md`),
+  and its missions are executed by the node's own executor (§5.4);
+- the ROS node and the emulator node are driven through fake rclpy modules in the gate ([24]);
+  on 2026-11-12 both **ran under ROS on an isolated graph beside Belief's node**, with made-up
+  sonar, navigation and Control (`test/ros_graph_check.py`, `REPORT.md` §F). Built into
+  `~/ros2_ws/install` on 2026-11-13. Never yet beside Control's node, in Gazebo or on the boat
+  (`LOCAL_CHECKLIST.md` L-C, L-G).
 
 Where this document and the code disagree, the code wins: fix the document.
 
@@ -15,15 +19,11 @@ Companion documents:
 - the Belief contract, field by field: `CONTRACT_CONSUMED.md`;
 - the C2 baseline tuning procedure: `C2_TUNING_PROTOCOL.md`.
 
-Sections changed at closure are marked **(closure X)**.
-
 **Labels** (brief §16.2): [DECIDED] [CODE] [DOC] [TEST] [DEMO] [ASSUMPTION] [OPEN], plus
-[NOT AVAILABLE] for comparisons with a v1 oracle that does not exist.
+[NOT AVAILABLE] for comparisons with an earlier prototype or oracle that does not exist.
 
-**Evidence ids:**
-- `E-nn` and `L-nn` — `EVIDENCE_REGISTER.md`;
-- `D-xx` — `PHASE0_VERIFICATION.md` §3;
-- `Q-n` — `QUESTIONS_PHASE0.md`.
+**Evidence ids:** `E-nn`, `L-nn` and `A-nn` are in `EVIDENCE_REGISTER.md`; `L-X`, `L-C`, `L-G`, …
+are the in-machine checks of `LOCAL_CHECKLIST.md`; `O-n` are the open items of §12.
 
 ## 1. Purpose and scope
 
@@ -50,28 +50,28 @@ executor, so every condition pays the same execution costs (CM-12, synthesis §7
 |---|---|---|---|
 | 1 | The path is changed mid-run only through `/blueboat/update_path` | [CODE] | E-01…E-19 |
 | 2 | Inputs are the brief's (§6.2): the BeliefGrid (only target evidence), `/blueboat/odom`, the mission file, Control's progress, events and answers, and an optional read-only Belief-config cross-check. Never online: detections, sonar, simulation ground truth, `/sim/*` | [DECIDED] user 2026-11-04 | brief §4.3, §6.2, §16.1; E-72 |
-| 3 | Mission areas come from the mission file (WGS-84 polygons, brief §6.4), converted with Belief's published datum | [DECIDED] | brief Q9; D-A1 |
+| 3 | Mission areas come from the mission file (WGS-84 polygons, brief §6.4), converted with Belief's published datum; the polygon must lie inside Belief's own area | [DECIDED] user 2026-11-04 | brief Q9; E-68 |
 | 4 | Survey speed **0.5 m/s** in every condition | [DECIDED] user | E-70 |
-| 5 | Swath = **one side**. Line spacing is a function of range: W = √(R² − h²) − r_near (brief §3); the NOAA grazing term is an option, **off by default** (closure H) | [DECIDED] (one side, function of range, brief §3); [ASSUMPTION] (option) | E-71, L-01, L-02 |
+| 5 | Swath = **one side**. Line spacing is a function of range: W = √(R² − h²) − r_near (brief §3); the NOAA grazing term is an option, **off by default** | [DECIDED] (one side, function of range, brief §3); [ASSUMPTION] (option) | E-71, L-01, L-02 |
 | 6 | Append-on-completion = C3, built first. The policy architecture is modular, so that a later policy may interrupt a line | [DECIDED] user | E-73 |
 | 7 | C4_rand uses a bearing table pre-drawn in `eval/`. No online randomness | [DECIDED] user | E-74 |
 | 8 | Plans are made in Belief's map frame M; exported paths are in Control's `world` frame W; one conversion module | [DOC] brief §6.5; C-5 | E-10, E-33 |
-| 9 | Turns are Dubins arcs (r_turn 3 m), with lead-ins for settling. No stationary corners and **no reliance on turning in place**; the first path is a Dubins manoeuvre from the hold pose (closure E) | [ASSUMPTION] (values); [DOC] (field radii 1.5–6 m) | E-23, E-41 |
+| 9 | Turns are Dubins arcs (r_turn 3 m), with lead-ins for settling. No stationary corners and **no reliance on turning in place**; the first path is a Dubins manoeuvre from the hold pose (MATH §3.5) | [ASSUMPTION] (values); [DOC] (field radii 1.5–6 m) | E-23, E-41 |
 | 10 | Decisions are taken at decision points: the ends of coverage legs and revisit bodies (brief Q10). Mid-line change points only for a policy that declares `may_interrupt` | [DECIDED] | — |
-| 11 | One controller for every condition; PID by default | [ASSUMPTION] default (Q-14) | E-24, E-25 |
+| 11 | One controller for every condition; PID by default | [ASSUMPTION] default, user 2026-11-04 | E-24, E-25 |
 | 12 | Planner sensor parameters are labelled placeholders; an aspect-agnostic variant exists | [DOC] brief §4.5 | A-01 |
 | 13 | Planner model ≠ world model is configuration, not code | [DOC] brief §4.6 | — |
-| 14 | Belief's core and Control's `path_update.py` are imported only in `eval/` and `test/`, behind guards | [ASSUMPTION] default (Q-11) | CM-3 |
-| 15 | A single emulator in `eval/`, run instead of Perception. Its output topic is [OPEN] (Q-9) | [ASSUMPTION] + [OPEN] | D-B1 |
-| 16 | Dev-loop results are development evidence only (synthesis §6.2 ⚠) | [DOC] | D-W1 |
-| 17 | Class mapping `concrete_block`→block, `pipe_pvc`→pipe, `mesh_crate`→cage, `tire_car`→tyre. Plate has no simulator class | [ASSUMPTION] default (Q-15) | E-38 |
-| 18 | No GTSP: nearest-feasible ordering plus a two-step lookahead | [DECIDED] brief §5, §8.5 | D-L2 |
+| 14 | Belief's core and Control's `path_update.py` are imported only in `eval/` and `test/`, behind guards | [ASSUMPTION] default, user 2026-11-04 | CM-3 |
+| 15 | A single emulator in `eval/`, run instead of Perception, never beside it. It publishes `/sss_ai/detections`, one array per seabed image, empty ones included (the input Belief requires; settled 2026-11-12) | [ASSUMPTION] | Belief `topics.md` §1 |
+| 16 | Dev-loop results are development evidence only (synthesis §6.2 ⚠), never E4 | [DOC] | synthesis §6.2, §7.4 |
+| 17 | Class mapping `concrete_block`→block, `pipe_pvc`→pipe, `mesh_crate`→cage, `tire_car`→tyre (world side). Plate has no simulator class. The planner's map from **Belief's** class names to aspect families (`class_families`) is empty until the owner fills it (RQ-6) | [ASSUMPTION] default, user 2026-11-04 | E-38 |
+| 18 | No GTSP: nearest-feasible ordering plus a two-step lookahead (the superproject's `literature_conclusions.md` §5 advises a turn-penalised GTSP; the brief's user decision stands) | [DECIDED] brief §5, §8.5 | E-60 |
 | 19 | The C2 tuning protocol is frozen before any C3/C4 evaluation result (`C2_TUNING_PROTOCOL.md`) | [ASSUMPTION] default; CM-12 | — |
-| 20 | Comparisons with the brief §9.5 prototype or any Belief v1 | [NOT AVAILABLE] | E-75 |
-| 21 | **C2, C3 and the C4 family all start from the C2 plan.** C4 with no detour equals C2; C3 inserts its revisits at the pass-1/pass-2 boundary; C1 is pass 1 only (closure B) | [ASSUMPTION] design choice, approved 2026-11-04 | MATH §10.1 |
-| 22 | Candidates are valued on the **whole executed tail over the remaining budget** (detour, rejoin, truncated remainder); the second lookahead step is chosen by the same combined value (closure B, C) | [ASSUMPTION] design choice, approved 2026-11-04 | MATH §10–§11 |
-| 23 | Background residual calibrated on the class-weighted mixture (closure A) | [ASSUMPTION] design choice (corrects the brief's formula, valid only for s ≡ 1), approved 2026-11-04 | MATH §9.1 |
-| 24 | Manual override or E-STOP **disarms** the replanner; it resumes only after an explicit `~/start` and the re-arm checks (closure D) | [DOC] brief §7.2 ("stops on … manual override or E-STOP") | §7 |
+| 20 | Comparisons with the brief §9.5 prototype | [NOT AVAILABLE] | E-75 |
+| 21 | **C2, C3 and the C4 family all start from the C2 plan.** C4 with no detour equals C2; C3 inserts its revisits at the pass-1/pass-2 boundary; C1 is pass 1 only | [ASSUMPTION] design choice, approved 2026-11-04 | MATH §10.1 |
+| 22 | Candidates are valued on the **whole executed tail over the remaining budget** (detour, rejoin, truncated remainder); the second lookahead step is chosen by the same combined value | [ASSUMPTION] design choice, approved 2026-11-04 | MATH §10–§11 |
+| 23 | Background residual calibrated on the class-weighted mixture (MATH §9.1) | [ASSUMPTION] design choice (corrects the brief's formula, valid only for s ≡ 1), approved 2026-11-04 | MATH §9.1 |
+| 24 | Manual override or E-STOP **disarms** the replanner; it resumes only after an explicit `~/start` and the re-arm checks | [DOC] brief §7.2 ("stops on … manual override or E-STOP") | §7 |
 
 ## 3. Structure (layout copied from the existing modules)
 
@@ -79,13 +79,17 @@ An ament_python package one level below the git root, like BlueBoat-Perception a
 BlueBoat-SSS-Sim.
 
 ```
-BlueBoat-Replanner/                       (as built, Phases 2-4)
+BlueBoat-Replanner/
+├── README.md · .gitignore
 ├── .claude/  CLAUDE.md · TODO.md · rules/{core-purity,models-apart,frames-trajectory}.md
 │             settings.json (Stop hook → tools/smoke_gate.sh)
-├── docs/     DESIGN, MATH, topics, CONTRACT_*, REQUESTS, LOCAL_CHECKLIST, PHASE0/1 records,
-│             C2_TUNING_*, DEVLOOP, INTEGRATION, REPORT, HANDOVER_CLOUD, REPLANNER_BRIEF (read-only)
-├── results/  devloop_2026-11-04/{c2_tuning, main, budget_sweep, budget_merged, timing_uncontended}
-│             (dev-loop outputs: preliminary, reference-belief-conditional; DEVLOOP §5)
+│             tools/{smoke_gate, devloop_batches, ros_check}.sh
+├── docs/     HANDOVER, REPORT, DESIGN, MATH, topics, CONTRACT_CONSUMED, REAL_BELIEF_BINDING,
+│             DEVLOOP, C2_TUNING_{PROTOCOL,RESULT}, EVIDENCE_REGISTER, LOCAL_CHECKLIST, REQUESTS,
+│             REPLANNER_BRIEF (the specification, read-only)
+├── results/  devloop_real_<date>/{c2_tuning, main, budget_sweep, budget_merged, class_true,
+│             ungated, timing_uncontended, distinct_sectors}  (dev-loop outputs on Belief's
+│             core: preliminary; DEVLOOP §5; made by .claude/tools/devloop_batches.sh)
 └── blueboat_replanner/                   package root (ament_python); gate: python3 -m test.smoke_test
     ├── package.xml · setup.py · setup.cfg · resource/
     ├── blueboat_replanner/
@@ -99,12 +103,22 @@ BlueBoat-Replanner/                       (as built, Phases 2-4)
     │   ├── io/     mission · trajectory_yaml · recordlog (data root, O_EXCL run folders) — PyYAML here
     │   ├── ros/    adapters (the ONE field-name table, ROS-free) · executor (ROS-free; the only
     │   │           code that knows Control's mechanism) · replanner_node (the only rclpy code)
-    │   └── eval/   belief_port · belief_reference (STAND-IN) · world (+ emulator, calibrator)
-    │               control_stub · devloop · runner · emulator_node     ← the only randomness
-    ├── config/   replanner.yaml (every default + category) · mission_example.yaml
+    │   └── eval/   belief_real (the binding to BlueBoat-Belief's core) · emulator (looks at
+    │               objects, seabed images) · world (+ calibrator) · control_stub (+ its
+    │               executor client) · devloop (missions run by ros/executor) · runner ·
+    │               compare (paired differences) · emulator_node  ← all randomness is here
+    ├── config/   replanner.yaml (every default + category) · mission_example.yaml ·
+    │             c2_tuned.yaml (the C2 freeze, written by the runner; applied by the node to
+    │             every mission, `c2_tuned_file`, §5.1)
     ├── launch/   replanner_launch.py · emulator_launch.py (launch imports optional)
-    └── test/     smoke_test.py (sections [1]-[24], exit != 0 on failure; [24] = the two nodes
-                  and both launch files over stand-in rclpy / launch modules)
+    └── test/     smoke_test.py (the gate's runner: gate/common.py, then the sections
+                  gate/s01_*.py … s25_*.py in one shared namespace; a section that raises is
+                  one failure and the next still runs; exit != 0 on failure; [20], [22] run on
+                  BlueBoat-Belief's core; [24] = the two nodes and both launch files over fake
+                  rclpy / launch modules) · test_gate.py (the gate as one test, in a
+                  subprocess: `colcon test`) · ros_graph_check.py (run by hand on an isolated
+                  ROS domain: the installed nodes beside Belief's node, made-up inputs; not
+                  installed, not part of the gate)
 ```
 
 **Core purity**, enforced by the gate's import sweep:
@@ -137,24 +151,34 @@ BlueBoat-Replanner/                       (as built, Phases 2-4)
 Control's mechanism is used as documented (`BlueBoat-Control/docs/PATH_UPDATE_INTERFACE.md`;
 E-01…E-19). **`ros/executor.py` is the only code that knows it.**
 - Its offline twin `eval/control_stub.py` enforces the same rules. It is written from the interface
-  document only, like Control's demo client.
+  document only, like Control's demo client. The gate ([23]) and the dev loop (§5.4) drive the
+  executor against it.
 - When importable, Control's ROS-free `path_update.PathUpdater` cross-checks it in the gate.
 
-### 5.1 One run (closure B, E)
+### 5.1 One run
 
 1. **Ready** when all of these hold:
    - progress `state == awaiting_path` with `hold`;
-   - the service is available;
-   - the grid is valid (`odom_to_map_valid`);
+   - the grid is valid (`odom_to_map_valid`) and fresh;
    - the mission is valid;
+   - `/blueboat/update_path` is served (`client.ready()`);
    - `~/start` has been called.
+
+   What is missing is named in the `start_timeout` failure (§7).
+
+   **The mission's configuration** is layered: `config/replanner.yaml` (the node's
+   `config_file`) < the C2 freeze (`config/c2_tuned.yaml`, the node's `c2_tuned_file`, default
+   the installed copy) < the mission file's `config`. The freeze is applied to every condition,
+   as in the dev loop; a mission file that sets a frozen key to another value is refused at
+   `~/start`, and a missing freeze file refuses every start. The run manifest records the file,
+   its sha256 and its settings.
 2. **First path** (MATH §3.5):
    - an initial Dubins manoeuvre from (`hold.x`, `hold.y`, ψ₀), where ψ₀ is the fresh odometry yaw,
      else `hold.yaw`, to the first coverage leg;
    - then the condition's plan: C1 = pass 1; **C2, C3, C4 = the C2 plan**;
    - converted to W, sampled, and sent with `change_point = NaN`, `id = r<run>-0000`.
 
-   The design does not rely on in-place turning (closure E). A hold outside F_margin, or no
+   The design does not rely on in-place turning. A hold outside F_margin, or no
    feasible manoeuvre, is a mission error at `~/start`.
 3. **Follow.** Track `tau`, `following_id`, `end_reached`. The plan's t axis is Control's t axis.
 4. **Decision point.** For a policy with epochs, the trigger (§5.2) fires before a decision point.
@@ -168,7 +192,7 @@ E-01…E-19). **`ros/executor.py` is the only code that knows it.**
 7. **End.** On `end_reached` with nothing to append, the run is `done`, and Control holds the last
    pose (E-17).
 
-### 5.2 Timing, requests, answers, refusals (closure G)
+### 5.2 Timing, requests, answers, refusals
 
 **Timing.** Verified Control bounds are separated from our configurable margins:
 
@@ -188,6 +212,26 @@ E-01…E-19). **`ros/executor.py` is the only code that knows it.**
 2. **Pre-send check.** With the latest progress (age ≤ 0.2 s), send only if
    c ≥ `min_change_point` + latency_margin. Otherwise **do not send**: log `missed_lead`, and
    re-decide at the next decision point. Acceptance is never assumed.
+
+   **Every request is then checked before it is sent** (`Executor._send`), in this order:
+   - Control's request rules (`request_check`);
+   - the area: every sample of the plan in F_(margin − slack), `area_check_slack_m` = 0.5 m
+     (owner, 2026-11-13; MATH §3.6);
+   - for a change (not the first path), the junction at c against the mirror, as Control checks
+     it (0.20 m, 10° unless the old path is stationary over the governor window h = 0.05 s;
+     `continuity_check`).
+
+   A request that fails any of them is a defect here: it is never sent, the run is `failed`
+   (`request_invalid:<reason>`), and Control keeps the last accepted path. Plans are built
+   inside F_margin and their tails start on the mirror, so none fails by construction; the
+   checks hold that against the re-expression of §4 and against a defect.
+   **What "latest" means in the node.** The node computes a decision inside its timer callback,
+   so no progress message is handled meanwhile: the progress it holds after computing dates
+   from before the computation. The executor therefore ages `min_change_point` by the measured
+   compute time (τ advances by at most 1 path-s per second, the table above), and sends only if
+   c ≥ `min_change_point` + compute time + latency_margin. A decision that takes longer than
+   about T_decide is thus dropped, never sent late. The decision record carries the compute
+   time and the lead that was left (`timing`, topics.md §5.1).
 3. **One request outstanding.** No decision while one is pending.
 4. **Answer timeout** (5 s) — reconcile from progress and events:
    - `active_id == id` → accepted;
@@ -200,15 +244,19 @@ E-01…E-19). **`ros/executor.py` is the only code that knows it.**
    | `operator_override`, `not_ready` | state | `disarmed` (§7) |
    | `no_run` | state | `run_ended` |
    | `mission_owned` | state | `failed` (the run is not replanner-owned) |
-   | `lead_too_short` | geometry | re-plan with c = the **next** decision point, once per epoch |
-   | `discontinuous_position`, `discontinuous_heading` | geometry | re-evaluate the mirror at c and rebuild once; a second occurrence → `failed` |
+   | `lead_too_short` | geometry | back to `running`; the **next** decision point decides again |
+   | `discontinuous_position`, `discontinuous_heading` | geometry | back to `running` (the next decision point builds from the mirror again); a second occurrence in the run → `failed` |
    | `bad_request`, `duplicate_id`, `too_few_points`, `too_many_points`, `not_finite`, `time_not_increasing`, `time_out_of_range`, `too_fast`, `heading_incoherent`, `change_point_outside` | request | `failed` (a defect here) |
 
 6. **The mirror changes only on acceptance.** A refusal never mutates the accepted-plan state.
 7. **Logging.** Every request and answer is logged in the decision topic, `requests.jsonl`, and
    Control's own `-pathlog.csv` (E-13).
+8. **The client.** The executor sends through `client.send(request, on_answer)`; the client
+   calls `on_answer(answer, now)` with the answer's **arrival** time (`requests.jsonl`:
+   `sent`, `answered`). In the node, an exception inside the executor's handling of an answer
+   is not caught as a failed call: only the service call's own result is guarded.
 
-### 5.3 Stop (closure D)
+### 5.3 Stop
 
 `~/stop` asks for a truncation at the earliest feasible c (≥ `min_change_point` +
 latency_margin). It is two samples at the mirror pose (x_c, y_c, yaw_c), at t = c and c + 1 s.
@@ -233,6 +281,30 @@ Checked against Control's code:
 
 Only `stopped_holding` asserts that the boat holds.
 
+### 5.4 The dev loop runs this executor
+
+`eval/devloop.run_mission` executes every dev-loop mission with `Executor` against the Control
+stub (`StubClient`, answers at once), on the loop's clock = path time (perfect tracking). Each
+step it feeds the executor:
+- Control's progress, with `ros_time` = Belief's clock (T0 + path time);
+- the odometry (the mirror pose);
+- Belief's grid when the executor will read it: at the start and on a tick where a decision
+  is due (`Executor.decision_due`, the trigger of rule 1).
+
+It ticks once, then flies the step. So the trigger, the policy call, the pre-send checks, the
+request, the splice, the budget accounting, the refusal handling and the horizon reading are
+the node's own code.
+
+What differs from the node, and why:
+- a policy computes in zero path time (the world stands still meanwhile), so the compute-time
+  ageing of rule 2 runs with 0, and results do not depend on machine load. The wall time of
+  each deciding tick is measured outside the executor;
+- `tracking_lag_m` = 0 (MATH §11.3);
+- two fields of `Mission` that a mission file cannot set: `planner_config` (C4_degraded's
+  planner block) and `budget_fraction` (missions cut short).
+
+On 2026-11-13, 40 stored missions re-run this way equal their stored rows (`DEVLOOP.md` §1).
+
 ## 6. Policies and decision points (modular, user 2026-11-04)
 
 ```
@@ -249,8 +321,10 @@ Policy.extra_triggers() -> [Periodic(dt) | OnNewContact]  # for interrupting pol
   - With PID/LoS at 0.5 m/s, lead_min is 6.0 s, so the trigger fires about 10 s (≈ 5 m) before the
     decision point.
   - A leg shorter than that window passes its decision point without a decision (`missed_lead`).
-- **Interrupting policies.** `Periodic` or `OnNewContact` (a new uid) fire at the earliest feasible
-  c on the current segment. The unflown part of an interrupted line stays in K as a RECOVER item.
+- **Interrupting policies (designed, not built).** `Periodic` or `OnNewContact` (a new uid) would
+  fire at the earliest feasible c on the current segment, the unflown part of an interrupted line
+  staying in K as a RECOVER item. Today `may_interrupt` is a flag that nothing reads, and
+  `extra_triggers` does not exist.
 
 | Condition | Policy | Initial plan | Decisions | `may_interrupt` | In E4 |
 |---|---|---|---|---|---|
@@ -258,10 +332,10 @@ Policy.extra_triggers() -> [Periodic(dt) | OnNewContact]  # for interrupting pol
 | C2 | `CoveragePolicy(passes=2)` | C2 plan | none | no | **baseline** |
 | C3 | `AppendOnCompletionPolicy` | C2 plan | one: the end of pass 1's last leg (if missed, the run continues as C2; logged) | no | yes |
 | C4 | `InformativePolicy` | C2 plan | every default decision point | no (brief Q10) | yes |
-| C4_live | `InformativePolicy(may_interrupt=True)` — **v1: the flag only; no `OnNewContact` trigger, not run** | C2 plan | as C4 | flag | no |
+| C4_live | `InformativePolicy(may_interrupt=True)` — **the flag only; no `OnNewContact` trigger, not run** | C2 plan | as C4 | flag | no |
 | C4_iso | `InformativePolicy`, A ≡ 1 | C2 plan | default | no | ablation |
 | C4_rand | `InformativePolicy`, bearings from `config.c4_rand.bearing_table` | C2 plan | default | no | ablation |
-| C4_degraded, C4_depth1 | dev loop only | C2 plan | default | no | no |
+| C4_degraded, C4_depth1 | dev loop (C4_degraded's planner block is set by `eval/` only) | C2 plan | default | no | no |
 
 **Build order** (user: append-on-completion first):
 1. C1, C2, C3, with the executor and the dev loop;
@@ -269,7 +343,11 @@ Policy.extra_triggers() -> [Periodic(dt) | OnNewContact]  # for interrupting pol
 
 C1 and C2 send exactly one request.
 
-## 7. State machine (closure D)
+**Online, a mission file names C1, C2, C3, C4, C4_iso, C4_rand or C4_depth1.** `C4_live` and
+`C4_degraded` are refused there: they would run exactly as C4 (no interruption; no degraded
+block outside `eval/`). C4_depth1 stays online until decision 7 (Gazebo timing).
+
+## 7. State machine
 
 | State | Entered when | Leaves to |
 |---|---|---|
@@ -277,7 +355,7 @@ C1 and C2 send exactly one request.
 | `waiting` | `~/start` accepted | `starting` when ready; `failed` after `start_timeout_s` (60 s), naming what is missing |
 | `starting` | first path sent | `running` on acceptance; `failed` on a request refusal; `waiting` on a transient state refusal |
 | `running` | following | `deciding` (trigger); `disarmed` (progress `override` or `not_ready`); `done` (end, nothing to append); `stop_requested` (`~/stop`); `run_ended` (`cleared`, `no_run`) |
-| `deciding` | trigger | `requesting` (REPLACE); `running` (CONTINUE, `missed_lead`); `requesting` (STOP truncation) |
+| `deciding` | trigger | `requesting` (REPLACE); `running` (CONTINUE, `missed_lead`); `stop_requested` (a policy STOP, `mission_stop:rho_floor`) |
 | `requesting` | request sent | `running` (accepted, or a handled refusal); `failed` (§5.2) |
 | `disarmed` | operator override (manual target, arrows) or E-STOP | `running` only on `~/start` **and** re-arm checks: progress `following`, `active_id` == the mirror's last id, fresh inputs, no stop pending. Never automatic |
 | `stop_requested` → `stop_accepted` → `stopped_holding` | §5.3 | `idle` (after `stopped_holding`) |
@@ -305,9 +383,9 @@ grid stamp is sim time under Gazebo.
 | BeliefGrid | `grid_seq` strictly increasing; age ≤ 5 s [ASSUMPTION] | CONTINUE, logged `stale_belief`. C3's single decision then continues as C2 |
 | Grid validity | contract checks; `odom_to_map_valid` | no first path; CONTINUE afterwards |
 | Progress | age ≤ 1 s (10 Hz, E-11); pre-send age ≤ 0.2 s | no request |
-| Odometry | age ≤ 1 s | decision pose = mirror pose at τ (`pose_source: plan`, brief §6.2 fallback) |
-| Pending looks | mirror path over [τ − t_lat, c] counts as seen (MATH §11.3); t_lat = 10 s [OPEN] | — |
-| Late joiner | TRANSIENT_LOCAL depth 1 receives the last snapshot [NOT RUN, L-B1] | — |
+| Odometry | age ≤ 1 s | decision pose = mirror pose at τ (`pose_source: mirror`, brief §6.2 fallback) |
+| Pending looks | mirror path over [τ_h, c] counts as seen, τ_h = the grid stamp converted to path time, minus the tracking margin (MATH §11.3); each fallback (τ − t_lat, t_lat = 10 s) is named in the record | — |
+| Late joiner | TRANSIENT_LOCAL depth 1 receives the last snapshot. Both ends were seen RELIABLE + TRANSIENT_LOCAL on a live isolated graph (2026-11-12, L-B1); a node joining long after Belief was not tested as such | — |
 
 The odometry pose is used for the record and for ψ₀ (MATH §3.5). Tails always start on the mirror.
 
@@ -316,15 +394,15 @@ The odometry pose is used for the record and for ψ₀ (MATH §3.5). Tails alway
 | Trigger | Response | Evidence / authority |
 |---|---|---|
 | Mission start | Never autonomous: `~/start` **and** an operator-started run (real: MCS START RUN in a `path_source:=replanner` session) | brief §7.2, §17.12; E-21 |
-| Areas | Never sent outside F_margin. Checked before every send; a violation → `failed` | brief Q9; MATH §3 |
-| Start outside the area / no room to turn | Mission error; the replanner never leaves the area to manoeuvre | closure E |
+| Areas | Plans are feasible by construction: coverage, transits and revisit legs are built and checked inside F_margin (MATH §3). **Every request is re-checked before it is sent**: all samples in F_(margin − 0.5 m), else never sent and the run `failed` (§5.2 rule 2) | brief Q9; MATH §3.6; owner 2026-11-13 |
+| Start outside the area / no room to turn | Mission error; the replanner never leaves the area to manoeuvre | MATH §3.5 |
 | Stale or inconsistent inputs | No request (§8) | brief §17.10 |
 | Manual target, arrows, E-STOP | Control refuses updates (E-16); the replanner is **`disarmed`** until an explicit `~/start` with the re-arm checks | brief §7.2; E-16; Control N10 |
 | Run stop / cleared | `run_ended` | E-18 |
 | Rejection or unknown acceptance | §5.2: no blind retry; Control keeps the accepted path | E-09 |
 | Plan exhausted | Control holds the last pose; `done` | E-17 |
-| `~/stop` | §5.3. "Stopped" is reported only as `stopped_holding`; a rejected stop is reported as **not in effect** | closure D |
-| Real-water autonomy | Changes are autonomous within an operator-started run and the areas. The first use comes only after Control's own on-water path-update test and a supervised dry run | [ASSUMPTION] default (Q-13); E-25 |
+| `~/stop` | §5.3. "Stopped" is reported only as `stopped_holding`; a rejected stop is reported as **not in effect** | brief §7.2 |
+| Real-water autonomy | Changes are autonomous within an operator-started run and the areas. The first use comes only after Control's own on-water path-update test and a supervised dry run | [ASSUMPTION] default, user 2026-11-04 (open: O-7) | E-25 |
 
 ## 10. Outputs (schemas in `topics.md`)
 
@@ -341,9 +419,10 @@ The odometry pose is used for the record and for ψ₀ (MATH §3.5). Tails alway
 - the directory is claimed with `O_EXCL` (suffixes `-2`, `-3`, …); nothing is overwritten;
 - contents:
   - `manifest.json`, `end.json`;
-  - `mission.yaml`;
+  - `mission.yaml`; `belief.json` (the grid the first path was planned on);
   - `plans/<k>-<id>.yaml` (`blueboat_trajectory/1` in frame M, with `geo_anchor` = datum);
-  - `decisions.jsonl`, `requests.jsonl`, `status.jsonl`.
+  - `decisions.jsonl`, `requests.jsonl`, `status.jsonl`, `events.jsonl` (Control's events plus
+    `belief_restart` and `transform_jump`). Schemas: `topics.md` §5, §6.
 
 ## 11. Traceability
 
@@ -353,20 +432,22 @@ The odometry pose is used for the record and for ψ₀ (MATH §3.5). Tails alway
 | Continuity at c | E-07 | mirror, change-point rule | every generated tail passes the stub |
 | A refusal leaves the plan unchanged | E-09; brief §17.14 | mirror updated only on acceptance | property 17 |
 | Belief is the only target evidence | CM-9; decision 2 | source sweep (no detection, sonar, `ground_truth` or `/sim/` names in `core/`, `ros/`) | gate sweep |
-| Areas and margin | brief Q9, §17.8 | `areas.py`, `coverage.py`, `routing.py` | every sample in F_margin; concave and narrow cases |
+| Areas and margin | brief Q9, §17.8 | `areas.py`, `coverage.py`, `routing.py`; `Executor._send` (send-time check) | every sample in F_margin; concave and narrow cases; a tail 3 m out is never sent ([23]) |
 | Trajectory contract | E-08, E-30 | `plan.sample()` | t increasing ≥ 1 ms; speed ≤ 1.05 U; yaw = tangent; ≤ 20 000 samples |
 | Spacing as a function of range | user; brief §3 | `spacing.py` | MATH §2.4 table; random brute force |
 | Geo bit-identical to MCS | brief §6.5 | `core/geo.py` | value and source comparison |
-| Initial manoeuvre without in-place turning | closure E | `coverage.initial_manoeuvre` | E-1 |
-| Candidate cost = executed tail | closure B | `sequence.py` | B-1…B-5 |
-| Lookahead consistency | closure C | `sequence.py`, `policy/informative.py` | C-1…C-5 |
-| Background calibration | closure A | `value.calibrate_p` | A-1…A-5 |
-| Detection band vs coverage band | closure F | `looks.py`, `spacing.py` | F-1, F-2 |
-| Timing: no send under a missed lead | closure G | executor pre-send check | G-1 |
-| Stop and disarm semantics | closure D; brief §7.2 | executor + state machine | D-1…D-5 |
-| Three rules | synthesis §8.1; brief §8.6 | `rules.py` | abandonment bound; budget never exceeded; C1/C2 never change |
+| Initial manoeuvre without in-place turning | MATH §3.5 | `coverage.initial_manoeuvre` | E-1 |
+| Candidate cost = executed tail | MATH §10 | `sequence.py` | B-1…B-5 |
+| Lookahead consistency | MATH §11 | `sequence.py`, `policy/informative.py` | C-1…C-5 |
+| Background calibration | MATH §9.1 | `value.calibrate_p` | A-1…A-5 |
+| Detection band vs coverage band | MATH §2, §6 | `looks.py`, `spacing.py` | F-1, F-2 |
+| Timing: no send under a missed lead | §5.2 | executor pre-send check | G-1 |
+| The dev loop runs the node's executor | §5.4 | `eval/devloop.py` → `ros/executor.py` | gate [22]; 40 stored missions re-run identical (`DEVLOOP.md` §1) |
+| Stop and disarm semantics | §5.3, §7; brief §7.2 | executor + state machine | D-1…D-5 |
+| Three rules | synthesis §8.1; brief §8.6 | `core/policy/informative.py` (MATH §12) | abandonment bound; budget never exceeded; C1/C2 never change |
 | Value-model properties | brief §13, §17.14 | `value.py`, `model.py` | MATH §14 |
-| Look predictor ≡ contract geometry | C-5; brief §9.2 | `looks.py` | > 97 % vs `belief_reference`; real Belief **skipped** |
+| Look predictor ≡ Belief's look geometry | C-5; brief §9.2; Belief `topics.md` §4 | `looks.py` | gate [20] against BlueBoat-Belief's core: 100 % both ways on a line, 99.9 % with turns (MATH §5) |
+| Belief read by meaning | Belief `topics.md` §3a and §11 (notes for a consumer) | `evidence.py`, `value.py`, `ros/executor.py` | H-1…H-8 (MATH §14) |
 | Determinism | brief §13 | pure core | byte-identical decisions |
 | CM-12 fairness | synthesis §7.3 | one generator, one executor, one speed and turn model; all adaptive conditions = C2 plus detours; frozen C2 protocol | `C2_TUNING_PROTOCOL.md`; runner freeze check |
 | No online randomness | user rule | `eval/` only | gate sweep |
@@ -376,12 +457,10 @@ The odometry pose is used for the record and for ψ₀ (MATH §3.5). Tails alway
 
 | Id | Item | Owner | Blocks |
 |---|---|---|---|
-| O-1 | Belief's topic, QoS, datum source, transform form, evidence input (Q-9) | Belief session / user (RQ-2, RQ-3) | Phase 4 binding, emulator output |
 | O-2 | R-3: `path_source` in SSS-Sim `full_mission_launch.py` | user → SSS-Sim (RQ-1) | Gazebo E4 in built worlds |
 | O-3 | Turn radius, settle time, 0.5 m/s achieved, initial-manoeuvre tracking (L-K1…L-K4, L-C5) | in-machine | none (placeholders) |
 | O-4 | r_near, measured r_far (L-S1) | in-machine | none (placeholders) |
 | O-5 | Clutter re-detection probability f; planner aspect windows (E3) | user / E3 | C4 values (swept) |
 | O-6 | Belief configuration file format, for the optional cross-check | Belief session | nothing |
-| O-7 | Real-water autonomy, confirmed after a dry run (Q-13) | user | E6 |
+| O-7 | Real-water autonomy, confirmed after a dry run | user | E6 |
 | O-8 | Missions with more than one area (how areas connect) | user | multi-area missions only |
-| O-9 | Belief latency t_lat and detection window (L-B5, L-B6) | in-machine | C4 pending-look window; calibration interpretation (MATH §9.1) |

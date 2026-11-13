@@ -35,7 +35,7 @@ class RevisitLeg:
 
 
 def detection_band(cfg, h: float) -> tuple:
-    """Detection band [r_lo, min(r_hi, r_geo)] (MATH §6, closure F)."""
+    """Detection band [r_lo, min(r_hi, r_geo)] (MATH §6)."""
     return cfg.pd_r_lo_m, min(cfg.pd_r_hi_m, r_geo(cfg.range_m, h))
 
 

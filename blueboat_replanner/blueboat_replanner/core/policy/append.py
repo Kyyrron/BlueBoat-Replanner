@@ -25,13 +25,6 @@ def last_pass1_line(plan) -> int | None:
     return idx
 
 
-def first_line_after(plan, i: int) -> int | None:
-    for j in range(i + 1, len(plan.segments)):
-        if plan.segments[j].kind == "line":
-            return j
-    return None
-
-
 class AppendOnCompletionPolicy(Policy):
     name = "C3"
 
@@ -48,7 +41,7 @@ class AppendOnCompletionPolicy(Policy):
             return Decision(CONTINUE, ctx.c, info={"reason": "stale_belief"})
         belief = ctx.belief
         pose_c = ctx.plan.pose_at(ctx.c)
-        k_idx = first_line_after(ctx.plan, ctx.dp_index)
+        k_idx = ctx.plan.next_line(ctx.dp_index)
         k_start = ctx.plan.segments[k_idx].start_pose() if k_idx is not None else None
         if k_start is not None:
             d_cont = connect(pose_c, k_start, ctx.area, cfg)
@@ -109,12 +102,9 @@ class AppendOnCompletionPolicy(Policy):
                      "r_star": leg.r_star, "transit_m": route_length(tr),
                      "body_m": leg.body.length, "T_detour": t_d, "dT": dT,
                      "fallback_bearing": fb, "r_star_adjusted": leg.r_star_adjusted}
-            if elapsed + t_d > ctx.budget.B + 1e-9:
-                entry.update(admitted=False, reason="budget")
-                scored.append(entry)
-                continue
-            if dT > cap + 1e-9:
-                entry.update(admitted=False, reason="revisit_cap")
+            why = ctx.budget.admission(elapsed, t_d, dT, cap)
+            if why:
+                entry.update(admitted=False, reason=why)
                 scored.append(entry)
                 continue
             entry.update(admitted=True, reason="")

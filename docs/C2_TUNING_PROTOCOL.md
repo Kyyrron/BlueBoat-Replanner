@@ -1,9 +1,10 @@
 # C2 tuning protocol (two-pass orthogonal baseline)
 
-Status: specified 2026-11-04 (Phase 1 closure I).
+Status: specified 2026-11-04 and approved by the owner; tie rule settled 2026-11-12 (§5).
 
-- **Run once in the dev loop** (preliminary, reference belief) and frozen before any C3/C4
-  evaluation: `docs/C2_TUNING_RESULT.md`, `config/c2_tuned.yaml`.
+- **Run in the dev loop on BlueBoat-Belief's core** (preliminary) and frozen before any C3/C4
+  evaluation: `docs/C2_TUNING_RESULT.md`, `config/c2_tuned.yaml`. Both files are written by the
+  tuning run (`.claude/tools/devloop_batches.sh`) and are never overwritten.
 - **The E4 freeze is still to be done in Gazebo**, in-machine.
 
 **Purpose.** Synthesis §8.6 ⚠ and CM-12 require the two-pass baseline to be tuned seriously, with
@@ -52,10 +53,28 @@ baseline's duration also sets every condition's budget (brief Q2).
 
 ## 5. Selection
 
-1. For each configuration in the grid, compute the mean score over `S_tune` and its standard error.
-2. Select the maximum mean score. Ties within one standard error of the best go to the shorter
-   mean duration, then to f closest to 0.8.
-3. Report the full grid (mean ± sd for every configuration), not only the winner.
+1. For each configuration in the grid, compute the mean score over `S_tune` and its standard
+   deviation.
+2. Take the feasible configuration with the maximum mean score: the *best*.
+3. **Ties (owner, 2026-11-12).** A feasible configuration is *tied* with the best when its mean
+   paired difference to the best, taken seed by seed on `S_tune`, is at most one standard error
+   of that difference. Among the tied configurations, the shorter mean duration is chosen, then
+   f closest to 0.8.
+4. Report the full grid (mean ± sd for every configuration), and for every tied configuration
+   its paired difference to the best and that difference's standard error.
+
+**Why the paired standard error.** Every configuration is flown on the same worlds. The
+standard error of a mean score is dominated by the differences *between worlds*, which are the
+same for all configurations and say nothing about which one is better. With it, 10 of the 12
+feasible configurations counted as tied on 2026-11-12, so the rule mostly picked the shortest
+feasible plan. The paired difference removes the between-world part.
+
+**Provenance of the dev-loop freeze.** Until 2026-11-12 the rule read "ties within one standard error of the best"
+(the standard error of the best configuration's mean). The freeze of 2026-11-12
+(`C2_TUNING_RESULT.md`) was made under that wording. Both wordings give the same choice on
+those data: the best mean is f = 0.9, f = 1.0 is 0.15 below it with a paired standard error of
+0.21, and it is the shorter plan (`DEVLOOP.md` §5.8). The rule was changed before any Gazebo
+result existed, and the freeze was not redone. `eval/runner.select_c2` implements it.
 
 ## 6. Freeze
 
@@ -63,7 +82,11 @@ baseline's duration also sets every condition's budget (brief Q2).
   code revision, manifest). Record the SHA-256 of `c2_tuned.yaml` in the run manifest.
 - **Enforcement.** The `eval/` runner refuses to run C3, C4 or any ablation on `S_eval` unless
   `c2_tuned.yaml` exists, and records its hash in every result row.
-- The dev-loop freeze is **preliminary** (reference-belief-conditional). The E4 freeze is done
+- **Online.** The node applies the freeze file (parameter `c2_tuned_file`, default the installed
+  `config/c2_tuned.yaml`) to every mission and records its hash in the run manifest; a mission
+  file that sets a frozen key to another value is refused (DESIGN §5.1). The E4 freeze replaces
+  that file.
+- The dev-loop freeze is **preliminary** (real-Belief dev loop). The E4 freeze is done
   in-machine, in Gazebo, on tuning worlds disjoint from the evaluation worlds (D7).
 
 ## 7. Fairness safeguards

@@ -1,8 +1,8 @@
 """One coverage generator for every condition (MATH.md §3, §4).
 
 C1 plan = initial manoeuvre + pass 1. C2 plan = initial manoeuvre + pass 1 + pass 2 (C2, C3 and
-the C4 family all start from it; closure B). The initial manoeuvre starts at the hold position
-with the boat's heading (closure E): no in-place turn is assumed.
+the C4 family all start from it; MATH §10.1). The initial manoeuvre starts at the hold position
+with the boat's heading (MATH §3.5): no in-place turn is assumed.
 """
 
 from __future__ import annotations
@@ -185,7 +185,7 @@ def assemble(start_pose, legs: list, area: Area, cfg, first_kind: str = "initial
         if route is None:
             if first and first_kind == "initial":
                 raise MissionError("initial manoeuvre: no feasible route from the hold pose "
-                                   "to the first coverage leg inside the area (closure E)")
+                                   "to the first coverage leg inside the area (MATH §3.5)")
             dropped.append(leg.leg_id)
             i += 1
             continue
@@ -217,7 +217,7 @@ def build_coverage(area: Area, start_pose, band: CoverageBand, cfg, t0: float = 
     """The C1 and C2 plans from the hold pose (MATH §3.2, §3.5)."""
     if not area.all_feasible(np.asarray([start_pose[:2]]), cfg.margin_m):
         raise MissionError("the hold position is outside the area's feasible set F_margin: "
-                           "move the boat inside the mission area before ~/start (closure E)")
+                           "move the boat inside the mission area before ~/start (MATH §3.5)")
     theta1 = area.long_axis_direction()
     if cfg.pass1_direction == "long_axis_plus_90":
         theta1 = (theta1 + math.pi / 2.0) % math.pi

@@ -42,20 +42,25 @@ class ControlStub:
             return max(floor, self.rules["gov_Lmax"] / u)
         return floor
 
-    def progress(self, tau: float) -> dict:
+    def progress(self, tau: float, ros_time: float | None = None) -> dict:
+        """Control's progress at path time `tau`; `ros_time` (Control's node clock) only when
+        the caller gives one."""
         accepting = self.state not in ("override", "not_ready")
         end = self.mirror.t_end if self.mirror else None
-        return {"schema": "blueboat_path_progress/1", "state":
-                ("awaiting_path" if self.awaiting else
-                 ("end_reached" if end is not None and tau >= end else self.state)),
-                "tau": tau, "accepting": accepting,
-                "lead_min": self.lead_min(tau) if self.mirror else None,
-                "min_change_point": (tau + self.lead_min(tau)) if (self.mirror and accepting
-                                                                    and not self.awaiting) else None,
-                "active_id": self.mirror.active_id, "t_end": end,
-                "hold": None if not self.awaiting else {"x": self.hold[0], "y": self.hold[1],
-                                                        "yaw": self.hold[2]},
-                "end_reached": (tau >= end) if end is not None else None}
+        d = {"schema": "blueboat_path_progress/1", "state":
+             ("awaiting_path" if self.awaiting else
+              ("end_reached" if end is not None and tau >= end else self.state)),
+             "tau": tau, "accepting": accepting,
+             "lead_min": self.lead_min(tau) if self.mirror else None,
+             "min_change_point": (tau + self.lead_min(tau)) if (self.mirror and accepting
+                                                                 and not self.awaiting) else None,
+             "active_id": self.mirror.active_id, "t_end": end,
+             "hold": None if not self.awaiting else {"x": self.hold[0], "y": self.hold[1],
+                                                     "yaw": self.hold[2]},
+             "end_reached": (tau >= end) if end is not None else None}
+        if ros_time is not None:
+            d["ros_time"] = float(ros_time)
+        return d
 
     # ------------------------------------------------------------- request
     def handle(self, req_id, change_point, t, x, y, yaw, tau: float) -> dict:
@@ -107,3 +112,20 @@ class ControlStub:
         self.used_ids.add(req_id)
         return {"accepted": True, "reason": "ok", "message": "accepted", "active_id": req_id,
                 "tau": tau, "min_change_point": tau + self.lead_min(tau)}
+
+
+class StubClient:
+    """Executor client over the stub (`ros/executor.py` client contract): answers at once, at
+    the caller's clock. `clock()` returns (tau, now): the path time the stub answers at and the
+    arrival time handed to the executor."""
+
+    def __init__(self, stub: ControlStub, clock):
+        self.stub, self.clock = stub, clock
+
+    def ready(self) -> bool:
+        return True
+
+    def send(self, req: dict, on_answer) -> None:
+        tau, now = self.clock()
+        on_answer(self.stub.handle(req["id"], req["change_point"], req["t"], req["x"], req["y"],
+                                   req["yaw"], tau), now)

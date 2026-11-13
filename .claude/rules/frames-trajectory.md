@@ -18,5 +18,5 @@ paths:
   yaw = tangent (45 deg coherence), <= 20 000 samples. The change point must be >= the progress
   `min_change_point` + margin, and continuity at c is 0.20 m / 10 deg.
 - No stationary corners: turns are Dubins arcs of radius `r_turn_m`. No in-place turn is ever
-  assumed (closure E).
+  assumed (MATH §3.5).
 - Every sample lies inside F_margin of the single mission area.

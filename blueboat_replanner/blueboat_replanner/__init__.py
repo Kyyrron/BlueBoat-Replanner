@@ -5,7 +5,7 @@ Layers (DESIGN.md §3):
   io/    files (YAML, JSON); the only place PyYAML is imported.
   ros/   duck-typed adapters, the executor (the only code that knows Control's path
          update) and the thin rclpy node (the only rclpy code).
-  eval/  development loop, reference belief, emulator; the only place with randomness.
+  eval/  development loop on BlueBoat-Belief's core, emulator; the only place with randomness.
 """
 
 __version__ = "0.1.0"

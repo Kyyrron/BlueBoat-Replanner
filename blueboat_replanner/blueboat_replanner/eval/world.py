@@ -1,7 +1,10 @@
-"""World model and detection emulator (eval/ only; the ONLY randomness in the module).
+"""World model and detection emulator (eval/ only).
 
-World ≠ planner: the world uses continuous target orientations and its own parameter block
-(matched to the planner's placeholders by default; ablations change only the PLANNER block).
+Randomness lives only in eval/: here, in `emulator.py` and in the C4_rand table of `runner.py`.
+
+World ≠ planner ≠ Belief: the world uses continuous target orientations and its own parameter
+block (matched to the planner's placeholders by default; ablations change only the PLANNER
+block). Belief's model is Belief's own and is never set from here.
 Detection draws are keyed by (seed, object id, look number) through `SeedSequence`, so two
 conditions on the same seed share the world and the k-th look at an object gets the same draw
 whatever path led to it (common random numbers, DESIGN §6 / C2 protocol §4).
@@ -41,6 +44,8 @@ class WorldObject:
     x: float
     y: float
     phi: float          # orientation (rad), continuous
+    label: str = ""     # the name a classifying detector would report (a built world's object
+                        # type); "" = the class itself for a target, a drawn one for clutter
 
 
 @dataclass
@@ -82,6 +87,8 @@ def make_world(seed: int, area, params: dict | None = None) -> World:
 
 
 def world_pd(world: World, obj: WorldObject, r: float, b: float, r_hi_geo: float) -> float:
+    """World detection probability of one look at `obj` from bearing b, at ground range r from
+    the transducer (the world's own model: a box in range, the class's aspect window)."""
     p = world.params
     if not (p["pd_r_lo_m"] <= r <= min(p["pd_r_hi_m"], r_hi_geo)):
         return 0.0
@@ -130,7 +137,7 @@ class Calibrator:
 
 def draw_detection(world: World, obj: WorldObject, r: float, b: float, r_hi_geo: float,
                    calibrator: Calibrator):
-    """One draw per object per pass when it is abeam (brief §10). Returns
+    """One draw per object per look (brief §10; `eval/emulator.py` defines the look). Returns
     (detected, x, y, q, raw_score)."""
     n = world.looks.get(obj.oid, 0) + 1
     world.looks[obj.oid] = n

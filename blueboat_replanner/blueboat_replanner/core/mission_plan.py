@@ -22,7 +22,7 @@ def policy_for(condition: str) -> Policy:
     if condition == "C3":
         return AppendOnCompletionPolicy()
     if condition.startswith("C4"):
-        from .policy.informative import informative_policy   # Phase 3 (C4 family)
+        from .policy.informative import informative_policy   # C4 family
         return informative_policy(condition)
     raise MissionError(f"unknown condition {condition!r}")
 

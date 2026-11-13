@@ -57,6 +57,7 @@ PARAMS: Mapping[str, ParamSpec] = MappingProxyType({
     "spacing_bisect_iterations": _p(40, int, "-", "D", "MATH §2.2", 1, 200),
     # geometry (MATH §3)
     "margin_m": _p(2.0, float, "m", "P", "brief Q9", 0.0, 50.0),
+    "area_check_slack_m": _p(0.5, float, "m", "U", "owner 2026-11-13; MATH §3.6", 0.0, 50.0),
     "r_turn_m": _p(3.0, float, "m", "P", "E-23 (field 1.5-6 m)", 0.5, 50.0, swept=True),
     "t_settle_s": _p(2.0, float, "s", "P", "brief §8.5", 0.0, 60.0),
     "geom_step_m": _p(0.05, float, "m", "D", "MATH §3", 1e-3, 1.0),
@@ -74,6 +75,13 @@ PARAMS: Mapping[str, ParamSpec] = MappingProxyType({
     "pd_r_lo_m": _p(3.0, float, "m", "P", "brief §8.2", 0.0, 100.0),
     "pd_r_hi_m": _p(25.0, float, "m", "P", "brief §8.2", 0.0, 200.0),
     "aspect_agnostic": _p(False, bool, "-", "D", "brief §4.5 (C4_iso)"),
+    # look geometry shared with Belief (MATH §5)
+    "lever_arm_m": _p(0.285, float, "m", "R", "Belief topics.md §4 item 2 (processor offset)",
+                      0.0, 2.0),
+    "turn_gate": _p(True, bool, "-", "R", "Belief MATH §4 item 6 (fallback when not published)"),
+    "turn_min_yaw_rate_rad_s": _p(0.01, float, "rad/s", "R",
+                                  "Belief turn.min_yaw_rate_rad_s (fallback when not published)",
+                                  1e-6, 10.0),
     # contact and value (MATH §7-§9)
     "clutter_f": _p(0.2, float, "-", "P", "[OPEN] O-5", 0.0, 1.0, swept=True),
     "kappa": _p(1.0, float, "-", "U", "brief §5 Q1", 0.0, 100.0, swept=True),
@@ -87,9 +95,17 @@ PARAMS: Mapping[str, ParamSpec] = MappingProxyType({
     # selection (MATH §11)
     "k1": _p(5, int, "-", "D", "MATH §11.2", 1, 100),
     "k2": _p(5, int, "-", "D", "MATH §11.4", 0, 100),
-    "epsilon_j": _p(0.02, float, "exp. targets", "P", "closure C", 0.0, 10.0, swept=True),
+    "sector_prefilter_k": _p(3, int, "-", "D", "MATH §11.2", 1, 64),
+    "epsilon_j": _p(0.02, float, "exp. targets", "P", "MATH §11", 0.0, 10.0, swept=True),
     "lookahead_depth": _p(2, int, "-", "D", "brief §8.5 (C4_depth1 = 1)", 1, 2),
-    "t_lat_s": _p(10.0, float, "s", "P", "[OPEN] L-B5", 0.0, 120.0),
+    "t_lat_s": _p(10.0, float, "s", "P", "MATH §11.3 (fallback when the stamp cannot be used)",
+                  0.0, 120.0),
+    "contact_guard_m": _p(1.0, float, "m", "D", "MATH §11.3 (two cells)", 0.0, 20.0),
+    "tracking_lag_m": _p(3.0, float, "m", "R", "Control gov_Lmax (E-08); MATH §11.3", 0.0, 50.0),
+    "clock_tolerance_s": _p(1.0, float, "s", "D", "MATH §11.3", 0.0, 60.0),
+    "horizon_max_lag_s": _p(120.0, float, "s", "D", "MATH §11.3", 1.0, 3600.0),
+    "area_tolerance_m": _p(0.05, float, "m", "R", "Belief area.CORNER_TOL_M; DESIGN §4",
+                           0.0, 5.0),
     # rules (MATH §12)
     "p_res": _p(0.05, float, "-", "P", "brief §8.6", 0.0, 1.0, swept=True),
     "n_max": _p(3, int, "-", "P", "brief §8.6", 0, 100, swept=True),
@@ -98,17 +114,17 @@ PARAMS: Mapping[str, ParamSpec] = MappingProxyType({
     "rho_floor": _p(0.0, float, "1/s", "P", "MATH §12", 0.0, 10.0),
     # timing and execution (MATH §15, DESIGN §5.2)
     "t_decide_s": _p(2.0, float, "s", "D", "brief §9.1", 0.0, 60.0),
-    "latency_margin_s": _p(2.0, float, "path s", "D", "closure G", 0.0, 60.0),
-    "answer_timeout_s": _p(5.0, float, "s", "D", "closure G", 0.1, 120.0),
-    "reconcile_timeout_s": _p(10.0, float, "s", "D", "closure G", 0.1, 300.0),
+    "latency_margin_s": _p(2.0, float, "path s", "D", "DESIGN §5.2", 0.0, 60.0),
+    "answer_timeout_s": _p(5.0, float, "s", "D", "DESIGN §5.2", 0.1, 120.0),
+    "reconcile_timeout_s": _p(10.0, float, "s", "D", "DESIGN §5.2", 0.1, 300.0),
     "belief_max_age_s": _p(5.0, float, "s", "D", "contract C-2 (~1 Hz)", 0.1, 600.0),
     "progress_max_age_s": _p(1.0, float, "s", "D", "E-11 (10 Hz)", 0.05, 60.0),
-    "progress_send_max_age_s": _p(0.2, float, "s", "D", "closure G", 0.01, 10.0),
+    "progress_send_max_age_s": _p(0.2, float, "s", "D", "DESIGN §5.2", 0.01, 10.0),
     "odom_max_age_s": _p(1.0, float, "s", "D", "DESIGN §8", 0.05, 60.0),
     "transform_jump_m": _p(0.5, float, "m", "D", "DESIGN §4", 0.0, 100.0),
     "start_timeout_s": _p(60.0, float, "s", "D", "DESIGN §7", 1.0, 3600.0),
-    "stop_retries": _p(3, int, "-", "D", "closure D", 0, 20),
-    "stop_hold_s": _p(1.0, float, "path s", "D", "closure D", 0.01, 60.0),
+    "stop_retries": _p(3, int, "-", "D", "DESIGN §5.3", 0, 20),
+    "stop_hold_s": _p(1.0, float, "path s", "D", "DESIGN §5.3", 0.01, 60.0),
 })
 
 # Control's request rules (E-08), mirrored for offline validation. These are facts of the
@@ -125,6 +141,9 @@ CONTROL_RULES = MappingProxyType({
     "heading_tol": math.radians(10.0),
     "gov_Lmax": 3.0,
     "first_path_t0_tol": 1e-6,
+    # governor window spacing h = path_time / (path_steps - 1) at Control's defaults (0.05 s,
+    # 2 steps; E-06, E-07): the heading check is skipped where the old path is stationary over h
+    "gov_h": 0.05,
 })
 
 
@@ -210,6 +229,23 @@ def _parse_classes(raw: Any) -> dict:
     return out
 
 
+def _parse_class_families(raw: Any, classes: Mapping) -> dict:
+    """`class_families`: Belief class name -> aspect family (a key of `classes`). MATH §6."""
+    if raw is None:
+        return {}
+    if not isinstance(raw, Mapping):
+        raise ConfigError("class_families must be a mapping: Belief class name -> family")
+    out = {}
+    for name, fam in raw.items():
+        if not isinstance(name, str) or not isinstance(fam, str):
+            raise ConfigError(f"class_families.{name}: name and family must be strings")
+        if fam not in classes:
+            raise ConfigError(f"class_families.{name}: family {fam!r} is not in classes "
+                              f"{sorted(classes)}")
+        out[name] = fam
+    return out
+
+
 def _parse_bearing_table(raw: Any) -> tuple:
     if raw is None:
         return ()
@@ -223,12 +259,14 @@ def _parse_bearing_table(raw: Any) -> tuple:
 class Config:
     """Immutable, validated parameter set. Attribute access by parameter name."""
 
-    __slots__ = ("_values", "classes", "bearing_table", "_overrides")
+    __slots__ = ("_values", "classes", "class_families", "bearing_table", "_overrides")
 
     def __init__(self, values: Mapping[str, Any], classes: Mapping[str, ClassModel],
-                 bearing_table: tuple, overrides: Mapping[str, Any]):
+                 bearing_table: tuple, overrides: Mapping[str, Any],
+                 class_families: Mapping[str, str] | None = None):
         object.__setattr__(self, "_values", MappingProxyType(dict(values)))
         object.__setattr__(self, "classes", MappingProxyType(dict(classes)))
+        object.__setattr__(self, "class_families", MappingProxyType(dict(class_families or {})))
         object.__setattr__(self, "bearing_table", tuple(bearing_table))
         object.__setattr__(self, "_overrides", MappingProxyType(dict(overrides)))
 
@@ -247,9 +285,12 @@ class Config:
         values = {k: spec.default for k, spec in PARAMS.items()}
         classes = dict(DEFAULT_CLASSES)
         table = ()
+        families_raw = None
         for key, val in overrides.items():
             if key == "classes":
                 classes = _parse_classes(val)
+            elif key == "class_families":
+                families_raw = val
             elif key == "c4_rand":
                 if not isinstance(val, Mapping) or set(val) - {"bearing_table"}:
                     raise ConfigError("c4_rand must be a mapping with only 'bearing_table'")
@@ -260,7 +301,8 @@ class Config:
                 raise ConfigError(f"unknown configuration key {key!r}")
         if values["pd_r_hi_m"] < values["pd_r_lo_m"]:
             raise ConfigError("pd_r_hi_m must be >= pd_r_lo_m")
-        return cls(values, classes, table, overrides)
+        families = _parse_class_families(families_raw, classes)
+        return cls(values, classes, table, overrides, families)
 
     def with_overrides(self, more: Mapping[str, Any]) -> "Config":
         merged = dict(self._overrides)
@@ -272,6 +314,7 @@ class Config:
         out = dict(self._values)
         out["classes"] = {k: {"m": v.m, "w_deg": math.degrees(v.w_rad), "a": v.a, "s": v.s}
                           for k, v in self.classes.items()}
+        out["class_families"] = dict(self.class_families)
         out["c4_rand"] = {"bearing_table": list(self.bearing_table)}
         return out
 

@@ -35,11 +35,18 @@ class Budget:
     def t_limit(self) -> float:
         return self.t_start + self.B
 
-    def remaining(self, c: float) -> float:
-        return self.t_limit - c
-
     def revisit_cap(self, rho_rev: float) -> float:
         return rho_rev * self.B
+
+    def admission(self, elapsed: float, T: float, dT: float, cap_left: float) -> str:
+        """Why an action is not admitted (MATH §12): "budget" when `elapsed` + its duration T
+        passes B, "revisit_cap" when its added revisit time dT passes what is left of the cap;
+        "" when it is admitted."""
+        if elapsed + T > self.B + 1e-9:
+            return "budget"
+        if dT > cap_left + 1e-9:
+            return "revisit_cap"
+        return ""
 
 
 @dataclass
@@ -52,8 +59,18 @@ class EpochContext:
     budget: Budget
     belief: object = None     # core.evidence.BeliefSnapshot or None (stale / not received)
     coverage: object = None   # core.coverage.CoveragePlans
-    pending: object = None    # pending look keys (C4, MATH §11.3)
     state: dict = field(default_factory=dict)   # per-mission policy memory (counters)
+    # MATH §11.3: the path time up to which `belief` is complete (None: not known, the
+    # policy falls back to tau - t_lat) and how it was obtained
+    tau_horizon: float | None = None
+    horizon_source: str = ""
+
+
+def horizon_of(ctx, cfg, tau: float) -> tuple:
+    """(tau_h, source) of MATH §11.3 for this epoch."""
+    if ctx.tau_horizon is not None:
+        return float(ctx.tau_horizon), ctx.horizon_source or "stamp"
+    return tau - cfg.t_lat_s, ctx.horizon_source or "t_lat:no_stamp"
 
 
 class Policy:

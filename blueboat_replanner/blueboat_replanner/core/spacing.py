@@ -1,6 +1,6 @@
 """Coverage band and line spacing as a function of range (MATH.md §2).
 
-The coverage band is used ONLY for line spacing (closure F). Predicted detections use the
+The coverage band is used ONLY for line spacing (MATH §2). Predicted detections use the
 detection band of MATH §6 (`looks.py`).
 """
 

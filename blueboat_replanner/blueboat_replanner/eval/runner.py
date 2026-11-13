@@ -3,8 +3,11 @@
     python3 -m blueboat_replanner.eval.runner --out DIR --seeds 30 \
         --conditions C1,C2,C3,C4,C4_iso,C4_rand,C4_depth1,C4_degraded --fractions 1.0,0.75,0.5
 
-Every number it writes is "reference-belief-conditional, preliminary" (DEVELOPMENT EVIDENCE
+Every number it writes is "real-Belief dev loop, preliminary": BlueBoat-Belief's own core,
+offline, with assumed PD, rho and aspect windows and an emulated detector (DEVELOPMENT EVIDENCE
 ONLY, never E4). Seeds: calibration 900-919 (C2 only), evaluation from --seed0 (default 2000).
+Every manifest records the Belief revision, how misses were credited (--miss-credit) and what
+class the emulated detector reported (--class-info).
 """
 
 from __future__ import annotations
@@ -21,31 +24,52 @@ from multiprocessing import Pool
 
 import numpy as np
 
-from .devloop import LABEL, Scenario, degraded_overrides, run_mission
+from .belief_real import MODES, belief_info
+from .devloop import CLASS_MODES, LABEL, Scenario, degraded_overrides, run_mission
 from .world import Calibrator
 
 CAL_SEEDS = list(range(900, 920))
 
 
-def rand_table(seed: int, n: int = 64, G: int = 6) -> list:
-    rng = np.random.default_rng(np.random.SeedSequence([int(seed), 3]))
-    return [int(v) for v in rng.integers(0, G, n)]
+def parse_belief_set(text) -> dict:
+    """`section.key=value,...` -> {section: {key: value}} (Belief configuration overrides of a
+    labelled sensitivity run; values: true/false, numbers, else strings)."""
+    out = {}
+    for item in filter(None, (text or "").split(",")):
+        name, eq, raw = item.partition("=")
+        sec, dot, key = name.strip().partition(".")
+        if not (eq and dot and sec and key and raw.strip()):
+            raise SystemExit(f"--belief-set: expected section.key=value, got {item!r}")
+        raw = raw.strip()
+        if raw.lower() in ("true", "false"):
+            val = raw.lower() == "true"
+        else:
+            try:
+                val = int(raw)
+            except ValueError:
+                try:
+                    val = float(raw)
+                except ValueError:
+                    val = raw
+        out.setdefault(sec, {})[key] = val
+    return out
 
 
 def _job(args):
-    seed, cond, frac, cal, sc_kw, shared = args
+    seed, cond, frac, cal, sc_kw, shared, miss_credit, class_info, belief_set = args
     sc = Scenario(**sc_kw)
     over, pover = dict(shared or {}), None
     run_cond = cond
-    if cond == "C4_rand":
-        over["c4_rand"] = {"bearing_table": rand_table(seed)}
     if cond == "C4_degraded":
         from ..core.config import Config
         pover = degraded_overrides(Config.from_dict({"planning_depth_m": sc.depth_m}))
     calib = Calibrator(cal["a"], cal["b"], cal["note"])
     t0 = time.perf_counter()
     r = run_mission(seed, run_cond, sc, overrides=over, planner_overrides=pover,
-                    calibrator=calib, budget_fraction=frac)
+                    calibrator=calib, budget_fraction=frac, miss_credit=miss_credit,
+                    class_info=class_info, base_rate=cal["real_fraction"],
+                    belief_overrides=belief_set or None,
+                    rand_seed=seed if cond == "C4_rand" else None)
     r["wall_s"] = time.perf_counter() - t0
     # reliability of the calibrated confidences on this run (detections only)
     det = [(calib(raw), lab) for raw, lab, ok in r.pop("raw_scores") if ok]
@@ -55,9 +79,9 @@ def _job(args):
     return r
 
 
-def calibrate(sc_kw, jobs: int, shared: dict) -> dict:
+def calibrate(sc_kw, jobs: int, shared: dict, miss_credit: str) -> dict:
     with Pool(jobs) as pool:
-        rows = pool.map(_cal_job, [(s, sc_kw, shared) for s in CAL_SEEDS])
+        rows = pool.map(_cal_job, [(s, sc_kw, shared, miss_credit) for s in CAL_SEEDS])
     scores, labels = [], []
     for r in rows:
         for raw, lab, ok in r:
@@ -71,9 +95,9 @@ def calibrate(sc_kw, jobs: int, shared: dict) -> dict:
 
 
 def _cal_job(args):
-    seed, sc_kw, shared = args
+    seed, sc_kw, shared, miss_credit = args
     r = run_mission(seed, "C2", Scenario(**sc_kw), overrides=dict(shared or {}),
-                    calibrator=Calibrator())
+                    calibrator=Calibrator(), miss_credit=miss_credit)
     return r["raw_scores"]
 
 
@@ -85,58 +109,106 @@ TUNE_GRID = [{"spacing_factor": f, "pass1_direction": d, "interlace": i}
 
 
 def _tune_job(args):
-    seed, k, over, sc_kw = args
-    r = run_mission(seed, "C2", Scenario(**sc_kw), overrides=over, calibrator=Calibrator())
+    seed, k, over, sc_kw, miss_credit = args
+    r = run_mission(seed, "C2", Scenario(**sc_kw), overrides=over, calibrator=Calibrator(),
+                    miss_credit=miss_credit)
     return {"k": k, "seed": seed, "score": r["final"]["score"],
             "confirmed_true": r["final"]["confirmed_true"],
             "false_confirmations": r["final"]["false_confirmations"],
             "recall_detected": r["final"]["recall_detected"], "duration": r["duration"]}
 
 
-def tune_c2(sc_kw, jobs: int, out_yaml: str, out_md: str) -> dict:
-    """C2_TUNING_PROTOCOL.md §2-§6 in the dev loop (PRELIMINARY: reference belief)."""
+def select_c2(rows: list, grid: list) -> dict:
+    """C2_TUNING_PROTOCOL.md §5 (rule of 2026-11-12, paired yardstick). `rows`: one dict per
+    (configuration k, seed) with `score` and `duration`; `grid`: the configurations.
+
+    1. B_cap = the mean duration of the reference configuration (f = 0.8, long axis, auto);
+       a configuration is feasible if its mean duration is <= B_cap.
+    2. best = the feasible configuration with the highest mean score.
+    3. A feasible configuration is TIED with the best when its mean paired difference to the
+       best, on the same seeds, is at most one standard error of that difference.
+    4. chosen = among the tied ones, the shortest mean duration, then f closest to 0.8.
+    """
+    ref = grid.index({"spacing_factor": 0.8, "pass1_direction": "long_axis",
+                      "interlace": "auto"})
+    by = {}
+    for r in rows:
+        by.setdefault(r["k"], {})[r["seed"]] = r
+    B_cap = float(np.mean([r["duration"] for r in by[ref].values()]))
+    stats = []
+    for k, cfg_ in enumerate(grid):
+        rr = [by[k][s_] for s_ in sorted(by[k])]
+        sc = np.array([r["score"] for r in rr], float)
+        dur = float(np.mean([r["duration"] for r in rr]))
+        sd = float(sc.std(ddof=1)) if len(sc) > 1 else 0.0
+        st = {**cfg_, "k": k, "n": len(rr), "score_mean": float(sc.mean()), "score_sd": sd,
+              "se": sd / math.sqrt(len(sc)), "duration": dur, "feasible": dur <= B_cap + 1e-6}
+        for key in ("confirmed_true", "false_confirmations", "recall_detected"):
+            if key in rr[0]:
+                st[key] = float(np.mean([r[key] for r in rr]))
+        stats.append(st)
+    order = lambda st: (round(st["duration"], 6), abs(st["spacing_factor"] - 0.8),  # noqa: E731
+                        st["pass1_direction"], st["interlace"])
+    feas = [st for st in stats if st["feasible"]]
+    top = max(st["score_mean"] for st in feas)
+    best = min((st for st in feas if st["score_mean"] >= top - 1e-12), key=order)
+    for st in feas:
+        seeds = sorted(set(by[best["k"]]) & set(by[st["k"]]))
+        d = np.array([by[best["k"]][s_]["score"] - by[st["k"]][s_]["score"] for s_ in seeds])
+        sd_d = float(d.std(ddof=1)) if len(d) > 1 else 0.0
+        st["diff_to_best"] = float(d.mean())
+        st["paired_se"] = sd_d / math.sqrt(len(d))
+        st["tied"] = st["diff_to_best"] <= st["paired_se"] + 1e-12
+    tied = [st for st in feas if st["tied"]]
+    return {"stats": stats, "best": best, "tied": tied, "chosen": min(tied, key=order),
+            "B_cap": B_cap}
+
+
+def tune_c2(sc_kw, jobs: int, out_yaml: str, out_md: str, miss_credit: str = "records") -> dict:
+    """C2_TUNING_PROTOCOL.md §2-§6 in the dev loop (PRELIMINARY: real-Belief dev loop)."""
     import hashlib
 
     import yaml
+    for path in (out_yaml, out_md):
+        if os.path.exists(path):
+            raise SystemExit(f"{path} exists: a C2 freeze is never overwritten "
+                             "(C2_TUNING_PROTOCOL §6)")
+    binfo = belief_info()
     with Pool(jobs) as pool:
-        rows = pool.map(_tune_job, [(s, k, cfg_, sc_kw) for k, cfg_ in enumerate(TUNE_GRID)
-                                    for s in TUNE_SEEDS])
-    ref = TUNE_GRID.index({"spacing_factor": 0.8, "pass1_direction": "long_axis",
-                           "interlace": "auto"})
-    B_cap = max(r["duration"] for r in rows if r["k"] == ref)
-    stats = []
-    for k, cfg_ in enumerate(TUNE_GRID):
-        rr = [r for r in rows if r["k"] == k]
-        sc = np.array([r["score"] for r in rr], float)
-        dur = float(np.mean([r["duration"] for r in rr]))
-        stats.append({**cfg_, "n": len(rr), "score_mean": float(sc.mean()),
-                      "score_sd": float(sc.std(ddof=1)),
-                      "se": float(sc.std(ddof=1) / math.sqrt(len(sc))),
-                      "confirmed_true": float(np.mean([r["confirmed_true"] for r in rr])),
-                      "false_confirmations": float(np.mean([r["false_confirmations"]
-                                                            for r in rr])),
-                      "recall_detected": float(np.mean([r["recall_detected"] for r in rr])),
-                      "duration": dur, "feasible": dur <= B_cap + 1e-6})
-    feas = [st for st in stats if st["feasible"]]
-    best = max(feas, key=lambda st: st["score_mean"])
-    tied = [st for st in feas if st["score_mean"] >= best["score_mean"] - best["se"]]
-    chosen = min(tied, key=lambda st: (round(st["duration"], 6),
-                                       abs(st["spacing_factor"] - 0.8),
-                                       st["pass1_direction"], st["interlace"]))
+        rows = pool.map(_tune_job, [(s, k, cfg_, sc_kw, miss_credit)
+                                    for k, cfg_ in enumerate(TUNE_GRID) for s in TUNE_SEEDS])
+    sel = select_c2(rows, TUNE_GRID)
+    stats, best, tied, chosen, B_cap = (sel["stats"], sel["best"], sel["tied"], sel["chosen"],
+                                        sel["B_cap"])
     doc = {"c2_tuned": {k: chosen[k] for k in ("spacing_factor", "pass1_direction",
                                                "interlace")},
-           "protocol": "docs/C2_TUNING_PROTOCOL.md", "label": "PRELIMINARY (dev loop, "
-           "reference belief); the E4 freeze is done in Gazebo in-machine",
-           "seeds": [TUNE_SEEDS[0], TUNE_SEEDS[-1]], "scenario": sc_kw, "B_cap_s": B_cap}
+           "protocol": "docs/C2_TUNING_PROTOCOL.md", "label": "PRELIMINARY (real-Belief dev "
+           "loop); the E4 freeze is done in Gazebo",
+           "seeds": [TUNE_SEEDS[0], TUNE_SEEDS[-1]], "scenario": sc_kw, "B_cap_s": B_cap,
+           "belief": {"revision": binfo["revision"], "core_sha256": binfo["core_sha256"],
+                      "miss_credit": miss_credit}}
     text = yaml.safe_dump(doc, sort_keys=False)
     with open(out_yaml, "w") as fh:
         fh.write(text)
     sha = hashlib.sha256(text.encode()).hexdigest()
+    best_row = (f"best mean: f = {best['spacing_factor']}, {best['pass1_direction']}, "
+                f"interlace {best['interlace']}: {best['score_mean']:.2f} ± "
+                f"{best['score_sd']:.2f} (SE {best['se']:.2f}), {best['duration']:.0f} s")
+    tied_rows = "; ".join(f"f = {st['spacing_factor']} {st['pass1_direction']} "
+                          f"{st['interlace']} ({st['score_mean']:.2f}, {st['duration']:.0f} s; "
+                          f"best − it = {st['diff_to_best']:+.2f}, paired SE "
+                          f"{st['paired_se']:.2f})" for st in tied)
     L = ["# C2 tuning result (dev loop) — PRELIMINARY", "",
-         "Reference-belief-conditional, preliminary. Protocol: `C2_TUNING_PROTOCOL.md`. Tuning "
+         "Real-Belief dev loop, preliminary: BlueBoat-Belief's core (revision "
+         f"`{binfo['revision']}`, core sha256 `{binfo['core_sha256'][:16]}…`), misses credited "
+         f"`{miss_credit}`, emulated detector, no class information. Protocol: "
+         "`C2_TUNING_PROTOCOL.md`. Tuning "
          f"seeds {TUNE_SEEDS[0]}-{TUNE_SEEDS[-1]} (n = {len(TUNE_SEEDS)}), disjoint from the "
          f"evaluation seeds. Scenario: {sc_kw}. B_cap = T(C2 at f = 0.8, long axis) = "
          f"{B_cap:.0f} s.", "",
+         f"**Candidates of the tie rule.** {best_row}. Tied with it (mean paired difference "
+         f"to the best, on the same seeds, at most one standard error of that difference): "
+         f"{tied_rows}.", "",
          f"**Chosen:** spacing_factor {chosen['spacing_factor']}, pass-1 direction "
          f"{chosen['pass1_direction']}, interlace {chosen['interlace']} (frozen in "
          f"`config/c2_tuned.yaml`, sha256 {sha[:16]}…).", "",
@@ -148,9 +220,10 @@ def tune_c2(sc_kw, jobs: int, out_yaml: str, out_md: str) -> dict:
                  f"{st['confirmed_true']:.2f} | {st['false_confirmations']:.2f} | "
                  f"{st['recall_detected']:.2f} | {st['duration']:.0f} | "
                  f"{'yes' if st['feasible'] else 'no'} |")
-    L += ["", "Selection: maximum mean score among feasible configurations; ties within one "
-          "standard error of the best go to the shorter duration, then to f closest to 0.8. "
-          "The whole grid is reported."]
+    L += ["", "Selection (`C2_TUNING_PROTOCOL.md` §5): maximum mean score among feasible "
+          "configurations; a configuration is tied with it when its mean paired difference to "
+          "it, on the same seeds, is at most one standard error of that difference; among the "
+          "tied ones the shorter duration, then f closest to 0.8. The whole grid is reported."]
     with open(out_md, "w") as fh:
         fh.write("\n".join(L) + "\n")
     return {"sha256": sha, **doc}
@@ -202,7 +275,9 @@ def summarise(rows, conditions, fractions) -> dict:
                    "refusals": int(sum(len(g[s]["refusals"]) for s in seeds)),
                    "missed_lead": int(sum(g[s]["missed_lead"] for s in seeds)),
                    "aspects_mean": float(np.mean([g[s]["target_aspects_mean"] for s in seeds])),
-                   "ece": ece([p for s in seeds for p in g[s].get("calib_pairs", [])])}
+                   "ece": ece([p for s in seeds for p in g[s].get("calib_pairs", [])]),
+                   "mission_stops": int(sum(bool(g[s].get("mission_stop")) for s in seeds)),
+                   "belief": _belief_summary([g[s].get("belief", {}) for s in seeds])}
             any_m = {}
             for s in seeds:
                 for a in g[s]["anytime"]:
@@ -232,11 +307,36 @@ def summarise(rows, conditions, fractions) -> dict:
     return out
 
 
+def _belief_summary(bs) -> dict:
+    """Per-group diagnostics of the Belief runs (published output and inputs only)."""
+    lag = [b["horizon_lag_mean_s"] for b in bs if b.get("horizon_lag_mean_s") is not None]
+    lmax = [b["horizon_lag_max_s"] for b in bs if b.get("horizon_lag_max_s") is not None]
+    hs = [b.get("health") for b in bs]
+    lost = (int(sum(sum(h["losses"].values()) for h in hs)) if hs and all(hs) else None)
+    return {"inputs_lost": lost,        # None: rows made before Belief documented its counters
+            "look_mismatch": int(sum(b.get("look_mismatch", 0) for b in bs)),
+            "looks_tracked": int(sum(b.get("looks_tracked", 0) for b in bs)),
+            "draws_within_look_timeout": int(sum(b.get("draws_within_look_timeout", 0)
+                                                 for b in bs)),
+            "horizon_lag_mean_s": float(np.mean(lag)) if lag else None,
+            "horizon_lag_max_s": float(np.max(lmax)) if lmax else None,
+            "detections_mean": float(np.mean([b.get("detections", 0) for b in bs])) if bs
+            else None}
+
+
 def write_markdown(summary, manifest, path):
+    b = manifest.get("belief", {})
     L = [f"# Dev-loop results — {manifest['name']}", "",
          f"**{LABEL}.** Development evidence only: never E4 (synthesis §6.2 ⚠, §4).",
-         "Reference belief = a stand-in written from the briefs, NOT BlueBoat-Belief. World "
-         "detection model = placeholders matched to the planner (not fitted from Gazebo).", "",
+         f"Belief = BlueBoat-Belief's own core (revision `{b.get('revision')}`, "
+         f"uncommitted changes: {b.get('uncommitted_changes')}, core sha256 "
+         f"`{str(b.get('core_sha256'))[:16]}…`), through its offline interface. Misses credited: "
+         f"`{manifest.get('miss_credit')}`. Class reported by the emulated detector: "
+         f"`{manifest.get('class_info')}`. Belief settings changed for this run: "
+         f"`{manifest.get('belief_set') or 'none'}`. Belief's PD, rho and the planner's aspect "
+         "windows "
+         "are assumed; the detector is emulated; the world's detection model is the planner's "
+         "placeholders (not fitted from Gazebo); tracking is perfect.", "",
          f"Seeds: {manifest['seeds'][0]}-{manifest['seeds'][-1]} (n = {len(manifest['seeds'])}), "
          f"paired across conditions. Calibration: {manifest['calibration']['note']} "
          f"(a = {manifest['calibration']['a']:.3f}, b = {manifest['calibration']['b']:.3f}, "
@@ -274,6 +374,26 @@ def write_markdown(summary, manifest, path):
             a = g["anytime"]
             vals = [a.get(k, {}).get("score", float("nan")) for k in ("0.25", "0.5", "0.75", "1.0")]
             L.append(f"| {g['condition']} | " + " | ".join(f"{v:.2f}" for v in vals) + " |")
+        L.append("")
+        L += ["Belief side (published output and inputs only): the grid's lag behind the boat "
+              "at the decisions; looks the emulator tracked at the objects and how many differ "
+              "from Belief's `aspect_counts` there; draws on one object less than a look "
+              "time-out apart (two sectors in one sweep); mission stops; inputs Belief reports "
+              "as lost (its counters `coverage_expired`, `stale_detection`, `future_detection`, "
+              "`no_pose_at_stamp`; — = not recorded in these rows).", "",
+              "| Condition | lag s (mean / max) | looks tracked | differing | close draws | "
+              "detections per mission | mission stops | inputs lost |",
+              "|---|---|---|---|---|---|---|---|"]
+        for g in summary["groups"]:
+            if g["fraction"] != f:
+                continue
+            b_ = g.get("belief") or {}
+            lag = ("—" if b_.get("horizon_lag_mean_s") is None else
+                   f"{b_['horizon_lag_mean_s']:.1f} / {b_['horizon_lag_max_s']:.1f}")
+            L.append(f"| {g['condition']} | {lag} | {b_.get('looks_tracked', 0)} | "
+                     f"{b_.get('look_mismatch', 0)} | {b_.get('draws_within_look_timeout', 0)} "
+                     f"| {b_.get('detections_mean') or 0:.1f} | {g.get('mission_stops', 0)} "
+                     f"| {'—' if b_.get('inputs_lost') is None else b_['inputs_lost']} |")
         L.append("")
     with open(path, "w") as fh:
         fh.write("\n".join(L) + "\n")
@@ -337,10 +457,12 @@ def merge_results(dirs, out, name, conds, fracs) -> int:
         with open(os.path.join(d, "results.jsonl")) as fh:
             rows += [json.loads(line) for line in fh]
     keys = {(m["c2_tuned"]["sha256"], m["calibration"]["a"], m["calibration"]["b"],
-             json.dumps(m["scenario"], sort_keys=True)) for m in mans}
+             json.dumps(m["scenario"], sort_keys=True), m.get("miss_credit"),
+             m.get("class_info"), m.get("belief", {}).get("core_sha256"),
+             json.dumps(m.get("belief_set") or {}, sort_keys=True)) for m in mans}
     if len(keys) != 1:
-        raise SystemExit(f"--from-results: runs differ in C2 freeze, calibration or scenario: "
-                         f"{sorted(keys)}")
+        raise SystemExit(f"--from-results: runs differ in C2 freeze, calibration, scenario, "
+                         f"miss credit, class information or Belief revision: {sorted(keys)}")
     rows = [r for r in rows if r["condition"] in conds and r["budget_fraction"] in fracs]
     groups = {}
     for r in rows:
@@ -389,6 +511,19 @@ def main(argv=None):
     ap.add_argument("--tune-c2", action="store_true",
                     help="run the C2 tuning protocol and freeze config/c2_tuned.yaml")
     ap.add_argument("--c2-tuned", default=None, help="frozen C2 settings (required for C3/C4)")
+    ap.add_argument("--miss-credit", default="records", choices=MODES,
+                    help="how Belief credits a miss: 'records' as in a live run (image by "
+                         "image), 'ungated' at once (sensitivity)")
+    ap.add_argument("--class-info", default="none", choices=CLASS_MODES,
+                    help="class reported by the emulated detector: 'none' or 'true'")
+    ap.add_argument("--belief-set", default="",
+                    help="Belief settings changed for a labelled sensitivity run, as "
+                         "section.key=value[,...] (for example "
+                         "contact.confirm_distinct_sectors=true). Belief's code and defaults "
+                         "are not touched; the change is written into the manifest")
+    ap.add_argument("--calibration-from", default=None,
+                    help="manifest.json of an earlier run: reuse its confidence calibration "
+                         "(same C2 freeze, miss credit and Belief revision required)")
     ap.add_argument("--from-results", default=None,
                     help="comma-separated result dirs: summarise their rows (no new mission) "
                          "over --conditions, --fractions and the seeds common to every group")
@@ -400,7 +535,7 @@ def main(argv=None):
     sc_kw0 = {"width_m": a.width, "height_m": a.height, "depth_m": a.depth}
     if a.tune_c2:
         res = tune_c2(sc_kw0, a.jobs, os.path.join(a.out, "c2_tuned.yaml"),
-                      os.path.join(a.out, "C2_TUNING_RESULT.md"))
+                      os.path.join(a.out, "C2_TUNING_RESULT.md"), a.miss_credit)
         print(json.dumps(res, indent=1))
         return 0
     shared, c2_sha = {}, None
@@ -419,17 +554,43 @@ def main(argv=None):
     seeds = list(range(a.seed0, a.seed0 + a.seeds))
     sc_kw = {"width_m": a.width, "height_m": a.height, "depth_m": a.depth}
     man_path = os.path.join(a.out, "manifest.json")
+    binfo = belief_info()
+    belief_set = parse_belief_set(a.belief_set)
     if os.path.exists(man_path):
         manifest = json.load(open(man_path))
         cal = manifest["calibration"]
+        same = (manifest.get("miss_credit") == a.miss_credit and
+                manifest.get("class_info") == a.class_info and
+                manifest.get("belief", {}).get("core_sha256") == binfo["core_sha256"] and
+                manifest.get("c2_tuned", {}).get("sha256") == c2_sha and
+                (manifest.get("belief_set") or {}) == belief_set)
+        if not same:
+            raise SystemExit(f"{man_path} was made with another miss credit, class "
+                             "information, C2 freeze, Belief revision or Belief setting: use "
+                             "a new folder")
     else:
-        cal = calibrate(sc_kw, a.jobs, shared)
+        if a.calibration_from:
+            src = json.load(open(a.calibration_from))
+            # the calibration maps the emulated detector's raw scores on the frozen C2 plan:
+            # it depends on the freeze, the scenario and how misses are credited, not on
+            # Belief's revision or settings (the raw scores come from the world)
+            if (src.get("c2_tuned", {}).get("sha256") != c2_sha or
+                    src.get("miss_credit") != a.miss_credit or
+                    json.dumps(src.get("scenario"), sort_keys=True) !=
+                    json.dumps(sc_kw, sort_keys=True)):
+                raise SystemExit("--calibration-from: that run differs in C2 freeze, miss "
+                                 "credit or scenario")
+            cal = dict(src["calibration"], reused_from=os.path.abspath(a.calibration_from))
+        else:
+            cal = calibrate(sc_kw, a.jobs, shared, a.miss_credit)
         manifest = {"name": a.name, "label": LABEL, "seeds": seeds, "conditions": conds,
                     "fractions": fracs, "scenario": sc_kw, "calibration": cal,
                     "calibration_seeds": CAL_SEEDS,
                     "module_revision": git_rev(os.path.dirname(os.path.abspath(__file__))),
                     "python": platform.python_version(), "numpy": np.__version__,
-                    "belief_backend": "reference (NOT BlueBoat-Belief)",
+                    "belief_backend": "BlueBoat-Belief core (offline interface)",
+                    "belief": binfo, "miss_credit": a.miss_credit, "class_info": a.class_info,
+                    "belief_set": belief_set,
                     "world": "eval/world.py WORLD_DEFAULTS (matched to planner placeholders)",
                     "c2_tuned": {"file": a.c2_tuned, "sha256": c2_sha, "settings": shared}}
         json.dump(manifest, open(man_path, "w"), indent=1)
@@ -441,8 +602,8 @@ def main(argv=None):
             r = json.loads(line)
             rows.append(r)
             done.add((r["seed"], r["condition"], r["budget_fraction"]))
-    todo = [(s, c, f, cal, sc_kw, shared) for f in fracs for c in conds for s in seeds
-            if (s, c, f) not in done]
+    todo = [(s, c, f, cal, sc_kw, shared, a.miss_credit, a.class_info, belief_set)
+            for f in fracs for c in conds for s in seeds if (s, c, f) not in done]
     with Pool(a.jobs) as pool, open(res_path, "a") as fh:
         for r in pool.imap_unordered(_job, todo):
             r["c2_tuned_sha256"] = c2_sha

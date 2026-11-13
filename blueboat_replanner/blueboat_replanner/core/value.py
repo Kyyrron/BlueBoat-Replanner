@@ -49,20 +49,37 @@ class Background:
 
     cells: np.ndarray        # flat cell indices (eligible)
     qw: np.ndarray           # (n_cells, K, S)
-    seen: np.ndarray         # (n_cells, G) bool — folded sectors seen in the grid
+    seen: np.ndarray         # (n_cells, G) bool — folded sectors a detector searched (MATH §9)
     q: np.ndarray            # (n_cells,)
     clamped: int
     no_sector_fallback: int
     index: dict              # flat cell -> row
+    searched_source: str = "aspect_log_miss"     # or "aspect_counts" [FALLBACK]
+    pbg_rel_diff: float | None = None            # MATH §9.2 consistency value (None: no field)
+
+    def info(self) -> dict:
+        """The `calibration` block of a decision record (topics.md §5.1)."""
+        return {"cells": int(len(self.cells)), "clamped": int(self.clamped),
+                "fallback_no_sector": int(self.no_sector_fallback),
+                "searched_source": self.searched_source,
+                "p_background_median_rel_diff": self.pbg_rel_diff}
 
 
 def build_background(snapshot, model: SensorModel, eligible_mask: np.ndarray, cfg) -> Background:
-    """MATH §9: Q = 1 - coverage, S_i from aspect_counts (folded), calibrated p_i, L_i, q_i, w_i."""
+    """MATH §9: Q = 1 - coverage, S_i = the folded sectors a detector searched
+    (`aspect_log_miss < 0`; `aspect_counts > 0` only when that field is absent), calibrated
+    p_i, L_i, q_i, w_i."""
     H, W = snapshot.coverage.shape
     flat = np.flatnonzero(eligible_mask.ravel())
     cov = snapshot.coverage.ravel()[flat]
     Q = 1.0 - cov
-    ac = snapshot.aspect_counts.reshape(H * W, snapshot.sector_count)[flat] > 0
+    searched = snapshot.searched
+    if searched is not None:
+        ac = searched.reshape(H * W, snapshot.sector_count)[flat]
+        source = "aspect_log_miss"
+    else:
+        ac = snapshot.aspect_counts.reshape(H * W, snapshot.sector_count)[flat] > 0
+        source = "aspect_counts"
     G = model.G
     if model.folded:
         seen = np.zeros((len(flat), G), dtype=bool)
@@ -95,7 +112,16 @@ def build_background(snapshot, model: SensorModel, eligible_mask: np.ndarray, cf
     w = np.nan_to_num(w)
     qw = q[:, None, None] * w
     index = {int(c): i for i, c in enumerate(flat)}
-    return Background(flat, qw, seen, q, int(clamped.sum()), int(nofall.sum()), index)
+    # MATH §9.2: Belief's p_background against its closed form p0 Q / (1 - p0 + p0 Q)
+    rel = None
+    if snapshot.p_background is not None and len(flat):
+        pb = snapshot.p_background.ravel()[flat]
+        closed = p0 * Q / (1.0 - p0 + p0 * Q)
+        ok = np.isfinite(pb) & (pb > 0)
+        if np.any(ok):
+            rel = float(np.median(np.abs(closed[ok] - pb[ok]) / pb[ok]))
+    return Background(flat, qw, seen, q, int(clamped.sum()), int(nofall.sum()), index, source,
+                      rel)
 
 
 def background_value(bg: Background, model: SensorModel, rows, g, pd) -> float:
@@ -131,21 +157,48 @@ class ContactState:
     y: float
     cov: np.ndarray
     fallbacks: tuple
+    q0: float = float("nan")           # first_confidence as read (raw while uncalibrated)
+    missed: tuple = ()                 # ((folded sector, strength), ...) used in the posterior
+    mapped_mass: float = 1.0           # class probability carried by classes with a family
 
 
 def _p_k(model: SensorModel, g: int, pd: float) -> np.ndarray:
     return pd * model.s[:, None] * model.A_g[g]
 
 
-def contact_posterior(c, model: SensorModel, cfg, cell: int) -> ContactState:
-    """MATH §7: p~_c and lambda_c(k, phi) from the contact's look history."""
+def cell_misses(snapshot, model: SensorModel, cell: int):
+    """{folded sector: recorded strength} of the sectors a detector searched at `cell`
+    (MATH §7): strength = max covered PD = 1 - exp(aspect_log_miss). None when the grid has no
+    per-sector miss record."""
+    if snapshot.miss_pd is None:
+        return None
+    row = snapshot.miss_pd.reshape(-1, snapshot.sector_count)[cell]
+    out = {}
+    for k in np.flatnonzero(row > 0.0):
+        g = int(model.fold(int(k)))
+        out[g] = max(out.get(g, 0.0), float(row[k]))
+    return out
+
+
+def contact_posterior(c, model: SensorModel, cfg, cell: int, cell_miss=None) -> ContactState:
+    """MATH §7: p~_c and lambda_c(k, phi) from the contact's look history. Misses are the
+    sectors searched at the contact's cell (`cell_miss`, at their recorded strength) and the
+    contact's own `sectors_missed` (at the plateau when the cell record does not hold them),
+    minus the detected sectors."""
     fold = model.fold
     D = sorted({int(fold(k)) for k in c.sectors_detected})
-    Mi = sorted({int(fold(k)) for k in c.sectors_missed} - set(D))
     pbar = model.p
+    miss = {int(fold(k)): pbar for k in c.sectors_missed}
+    fallbacks = list(c.fallbacks)
+    if cell_miss is None:
+        fallbacks.append("misses_from_sector_sets")
+    else:
+        miss.update({int(g): float(v) for g, v in cell_miss.items()})
+    for g in D:
+        miss.pop(g, None)
+    Mi = sorted(miss)
     prior = (np.asarray(c.class_probabilities)[:, None] * model.pi_phi[None, :])
     f = cfg.clutter_f
-    fallbacks = list(c.fallbacks)
 
     def post_given_first(g1):
         w1 = prior * _p_k(model, g1, pbar)
@@ -156,9 +209,11 @@ def contact_posterior(c, model: SensorModel, cfg, cell: int) -> ContactState:
         rest = [g for g in D if g != g1]
         for g in rest:
             lik = lik * _p_k(model, g, pbar)
+        L_clut = f ** len(rest)
         for g in Mi:
-            lik = lik * (1.0 - _p_k(model, g, pbar))
-        L_clut = (f ** len(rest)) * ((1.0 - f) ** len(Mi))
+            lik = lik * (1.0 - _p_k(model, g, miss[g]))
+            # the same range factor for clutter: 1 - f on the plateau (MATH §7)
+            L_clut *= 1.0 - f * (min(1.0, miss[g] / pbar) if pbar > 0 else 0.0)
         return lik, float(lik.sum()), L_clut
 
     if c.first_sector != 255 and int(fold(c.first_sector)) in D:
@@ -187,8 +242,10 @@ def contact_posterior(c, model: SensorModel, cfg, cell: int) -> ContactState:
         num = q0 * L_real
         den = num + (1.0 - q0) * L_clut
         p_t = float(num / den) if den > 0 else float(q0)
+    mapped = float(np.sum(np.asarray(c.class_probabilities)[model.mapped]))
     return ContactState(c.uid, p_t, lam, frozenset(D) | frozenset(Mi), frozenset(D),
-                        bool(c.confirmed), cell, c.x, c.y, c.cov, tuple(fallbacks))
+                        bool(c.confirmed), cell, c.x, c.y, c.cov, tuple(fallbacks),
+                        float(q0), tuple((g, miss[g]) for g in Mi), mapped)
 
 
 def contact_value(cs: ContactState, model: SensorModel, cfg, looks: dict) -> float:
@@ -226,9 +283,6 @@ def after_miss(cs: ContactState, model: SensorModel, cfg, looks: dict) -> Contac
     lam = cs.lam * prod
     lam = lam / lam.sum() if lam.sum() > 0 else cs.lam
     return ContactState(cs.uid, float(p_t), lam, cs.seen_g | frozenset(looks), cs.detected_g,
-                        cs.confirmed, cs.cell, cs.x, cs.y, cs.cov, cs.fallbacks)
+                        cs.confirmed, cs.cell, cs.x, cs.y, cs.cov, cs.fallbacks, cs.q0,
+                        cs.missed, cs.mapped_mass)
 
-
-def after_detection(cs: ContactState) -> ContactState:
-    return ContactState(cs.uid, cs.p_tilde, cs.lam, cs.seen_g, cs.detected_g, True, cs.cell,
-                        cs.x, cs.y, cs.cov, cs.fallbacks)

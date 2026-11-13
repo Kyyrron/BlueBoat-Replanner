@@ -1,0 +1,115 @@
+{
+ "label": "real-Belief dev loop, preliminary",
+ "groups": [
+  {
+   "condition": "C4",
+   "fraction": 1.0,
+   "n": 5,
+   "score": [
+    2.4,
+    1.140175425099138
+   ],
+   "confirmed_true": [
+    4.2,
+    0.8366600265340756
+   ],
+   "false_confirmations": [
+    1.8,
+    1.6431676725154984
+   ],
+   "recall_detected": [
+    5.0,
+    1.0
+   ],
+   "revisit_time_s": 733.2922318061776,
+   "decision_time_mean_s": 0.5156720253723601,
+   "decision_time_max_s": 1.7868504250000115,
+   "refusals": 0,
+   "missed_lead": 0,
+   "aspects_mean": 3.6,
+   "ece": 0.0969490675686416,
+   "mission_stops": 0,
+   "belief": {
+    "look_mismatch": 0,
+    "looks_tracked": 463,
+    "draws_within_look_timeout": 7,
+    "horizon_lag_mean_s": 6.697571428571436,
+    "horizon_lag_max_s": 8.700000000000045,
+    "detections_mean": 20.2
+   },
+   "anytime": {
+    "0.25": {
+     "confirmed_true": 1.2,
+     "score": 1.0
+    },
+    "0.5": {
+     "confirmed_true": 2.8,
+     "score": 2.0
+    },
+    "0.75": {
+     "confirmed_true": 3.6,
+     "score": 2.2
+    },
+    "1.0": {
+     "confirmed_true": 4.2,
+     "score": 2.4
+    }
+   }
+  },
+  {
+   "condition": "C4_depth1",
+   "fraction": 1.0,
+   "n": 5,
+   "score": [
+    2.4,
+    0.5477225575051661
+   ],
+   "confirmed_true": [
+    4.4,
+    0.8944271909999159
+   ],
+   "false_confirmations": [
+    2.0,
+    1.0
+   ],
+   "recall_detected": [
+    4.6,
+    1.1401754250991378
+   ],
+   "revisit_time_s": 779.6948105596914,
+   "decision_time_mean_s": 0.18789924635331517,
+   "decision_time_max_s": 0.48798100400017574,
+   "refusals": 0,
+   "missed_lead": 0,
+   "aspects_mean": 3.7666666666666666,
+   "ece": 0.08892871497258582,
+   "mission_stops": 0,
+   "belief": {
+    "look_mismatch": 0,
+    "looks_tracked": 483,
+    "draws_within_look_timeout": 9,
+    "horizon_lag_mean_s": 6.62452991452989,
+    "horizon_lag_max_s": 8.700000000000045,
+    "detections_mean": 21.4
+   },
+   "anytime": {
+    "0.25": {
+     "confirmed_true": 1.0,
+     "score": 0.8
+    },
+    "0.5": {
+     "confirmed_true": 2.8,
+     "score": 1.8
+    },
+    "0.75": {
+     "confirmed_true": 3.8,
+     "score": 2.2
+    },
+    "1.0": {
+     "confirmed_true": 4.4,
+     "score": 2.4
+    }
+   }
+  }
+ ]
+}

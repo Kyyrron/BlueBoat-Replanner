@@ -2,7 +2,7 @@
 
 `request_check` mirrors Control's request checks (E-08; `path_update.validate_samples`, rev
 1fadbb2) so that a request is validated before it is sent. Control remains the authority:
-passing this check does not mean Control will accept (closure G).
+passing this check does not mean Control will accept (DESIGN §5.2).
 """
 
 from __future__ import annotations

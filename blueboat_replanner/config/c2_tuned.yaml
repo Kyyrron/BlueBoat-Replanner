@@ -3,7 +3,7 @@ c2_tuned:
   pass1_direction: long_axis
   interlace: auto
 protocol: docs/C2_TUNING_PROTOCOL.md
-label: PRELIMINARY (dev loop, reference belief); the E4 freeze is done in Gazebo in-machine
+label: PRELIMINARY (real-Belief dev loop); the E4 freeze is done in Gazebo
 seeds:
 - 1000
 - 1019
@@ -12,3 +12,7 @@ scenario:
   height_m: 60.0
   depth_m: 2.0
 B_cap_s: 2499.2596264641516
+belief:
+  revision: 093841a
+  core_sha256: fcd9531597e593b34cf666210f7aa59e98b237b478df6a53090206f6f6649ebb
+  miss_credit: records

@@ -1,0 +1,341 @@
+{
+ "label": "real-Belief dev loop, preliminary",
+ "groups": [
+  {
+   "condition": "C2",
+   "fraction": 1.0,
+   "n": 30,
+   "score": [
+    2.033333333333333,
+    1.731718965280638
+   ],
+   "confirmed_true": [
+    3.2,
+    1.3235271579877137
+   ],
+   "false_confirmations": [
+    1.1666666666666667,
+    0.8742813140471173
+   ],
+   "recall_detected": [
+    4.7,
+    0.915385729888094
+   ],
+   "revisit_time_s": 0.0,
+   "decision_time_mean_s": 0.0,
+   "decision_time_max_s": 0.0,
+   "refusals": 0,
+   "missed_lead": 0,
+   "aspects_mean": 2.2277777777777774,
+   "ece": 0.04506694638032281,
+   "mission_stops": 0,
+   "belief": {
+    "inputs_lost": 0,
+    "look_mismatch": 0,
+    "looks_tracked": 2459,
+    "draws_within_look_timeout": 22,
+    "horizon_lag_mean_s": null,
+    "horizon_lag_max_s": null,
+    "detections_mean": 17.233333333333334
+   },
+   "anytime": {
+    "0.25": {
+     "confirmed_true": 0.43333333333333335,
+     "score": 0.36666666666666664
+    },
+    "0.5": {
+     "confirmed_true": 1.2,
+     "score": 0.9666666666666667
+    },
+    "0.75": {
+     "confirmed_true": 2.1333333333333333,
+     "score": 1.4
+    },
+    "1.0": {
+     "confirmed_true": 3.2,
+     "score": 2.033333333333333
+    }
+   }
+  },
+  {
+   "condition": "C3",
+   "fraction": 1.0,
+   "n": 30,
+   "score": [
+    1.8,
+    1.8080280742403807
+   ],
+   "confirmed_true": [
+    3.4,
+    1.2484473115254693
+   ],
+   "false_confirmations": [
+    1.6,
+    1.132589343358684
+   ],
+   "recall_detected": [
+    4.9,
+    0.8448627719625692
+   ],
+   "revisit_time_s": 436.2323555062485,
+   "decision_time_mean_s": 0.049888785699992395,
+   "decision_time_max_s": 0.17771672299932106,
+   "refusals": 0,
+   "missed_lead": 0,
+   "aspects_mean": 2.7499999999999996,
+   "ece": 0.040451483140778344,
+   "mission_stops": 0,
+   "belief": {
+    "inputs_lost": 0,
+    "look_mismatch": 0,
+    "looks_tracked": 2698,
+    "draws_within_look_timeout": 41,
+    "horizon_lag_mean_s": 6.7999999999999545,
+    "horizon_lag_max_s": 6.7999999999999545,
+    "detections_mean": 18.733333333333334
+   },
+   "anytime": {
+    "0.25": {
+     "confirmed_true": 0.43333333333333335,
+     "score": 0.36666666666666664
+    },
+    "0.5": {
+     "confirmed_true": 1.2,
+     "score": 0.9666666666666667
+    },
+    "0.75": {
+     "confirmed_true": 2.8666666666666667,
+     "score": 1.8333333333333333
+    },
+    "1.0": {
+     "confirmed_true": 3.4,
+     "score": 1.8
+    }
+   },
+   "paired_vs_C2": {
+    "n": 30,
+    "mean_diff": -0.23333333333333334,
+    "sd": 1.0726484571581123,
+    "ci95_approx": [
+     -0.6250091708390746,
+     0.15834250417240792
+    ],
+    "better": 6,
+    "equal": 13,
+    "worse": 11,
+    "targets_confirmed_only_here": 12,
+    "targets_confirmed_only_by_C2": 6
+   }
+  },
+  {
+   "condition": "C4",
+   "fraction": 1.0,
+   "n": 30,
+   "score": [
+    2.2333333333333334,
+    1.1043279539543756
+   ],
+   "confirmed_true": [
+    3.8666666666666667,
+    0.9732042112432565
+   ],
+   "false_confirmations": [
+    1.6333333333333333,
+    0.8502873077655142
+   ],
+   "recall_detected": [
+    4.966666666666667,
+    0.9643054793328016
+   ],
+   "revisit_time_s": 870.5298508193159,
+   "decision_time_mean_s": 0.9736181903599213,
+   "decision_time_max_s": 3.9553028650007036,
+   "refusals": 0,
+   "missed_lead": 0,
+   "aspects_mean": 3.911111111111112,
+   "ece": 0.039902754873212314,
+   "mission_stops": 0,
+   "belief": {
+    "inputs_lost": 0,
+    "look_mismatch": 0,
+    "looks_tracked": 2866,
+    "draws_within_look_timeout": 43,
+    "horizon_lag_mean_s": 6.7396244496244435,
+    "horizon_lag_max_s": 8.700000000000045,
+    "detections_mean": 20.933333333333334
+   },
+   "anytime": {
+    "0.25": {
+     "confirmed_true": 0.7,
+     "score": 0.6333333333333333
+    },
+    "0.5": {
+     "confirmed_true": 2.4,
+     "score": 1.8333333333333333
+    },
+    "0.75": {
+     "confirmed_true": 3.2,
+     "score": 2.2
+    },
+    "1.0": {
+     "confirmed_true": 3.8666666666666667,
+     "score": 2.2333333333333334
+    }
+   },
+   "paired_vs_C2": {
+    "n": 30,
+    "mean_diff": 0.2,
+    "sd": 1.5844067746592754,
+    "ci95_approx": [
+     -0.3785435538299265,
+     0.7785435538299266
+    ],
+    "better": 11,
+    "equal": 11,
+    "worse": 8,
+    "targets_confirmed_only_here": 29,
+    "targets_confirmed_only_by_C2": 9
+   }
+  },
+  {
+   "condition": "C4_iso",
+   "fraction": 1.0,
+   "n": 30,
+   "score": [
+    2.1,
+    1.6262925893598903
+   ],
+   "confirmed_true": [
+    3.8666666666666667,
+    1.2521246311585854
+   ],
+   "false_confirmations": [
+    1.7666666666666666,
+    0.8976341829703132
+   ],
+   "recall_detected": [
+    4.9,
+    0.8847364696279088
+   ],
+   "revisit_time_s": 754.478931388896,
+   "decision_time_mean_s": 1.1009436628882614,
+   "decision_time_max_s": 4.946822899999461,
+   "refusals": 0,
+   "missed_lead": 0,
+   "aspects_mean": 3.683333333333333,
+   "ece": 0.04353561330385127,
+   "mission_stops": 0,
+   "belief": {
+    "inputs_lost": 0,
+    "look_mismatch": 0,
+    "looks_tracked": 2781,
+    "draws_within_look_timeout": 44,
+    "horizon_lag_mean_s": 6.773634717134714,
+    "horizon_lag_max_s": 8.700000000000045,
+    "detections_mean": 20.233333333333334
+   },
+   "anytime": {
+    "0.25": {
+     "confirmed_true": 0.8333333333333334,
+     "score": 0.7666666666666667
+    },
+    "0.5": {
+     "confirmed_true": 2.3666666666666667,
+     "score": 1.7666666666666666
+    },
+    "0.75": {
+     "confirmed_true": 3.3666666666666667,
+     "score": 2.2
+    },
+    "1.0": {
+     "confirmed_true": 3.8666666666666667,
+     "score": 2.1
+    }
+   },
+   "paired_vs_C2": {
+    "n": 30,
+    "mean_diff": 0.06666666666666667,
+    "sd": 1.5521583045227219,
+    "ci95_approx": [
+     -0.5001014108040451,
+     0.6334347441373784
+    ],
+    "better": 12,
+    "equal": 7,
+    "worse": 11,
+    "targets_confirmed_only_here": 25,
+    "targets_confirmed_only_by_C2": 5
+   }
+  },
+  {
+   "condition": "C4_rand",
+   "fraction": 1.0,
+   "n": 30,
+   "score": [
+    1.9333333333333333,
+    1.1426929274467317
+   ],
+   "confirmed_true": [
+    3.8333333333333335,
+    1.1472105098991157
+   ],
+   "false_confirmations": [
+    1.9,
+    0.7588557629520365
+   ],
+   "recall_detected": [
+    5.066666666666666,
+    0.8276819867946675
+   ],
+   "revisit_time_s": 880.7305930268881,
+   "decision_time_mean_s": 0.9783695482223821,
+   "decision_time_max_s": 4.245926254000551,
+   "refusals": 0,
+   "missed_lead": 0,
+   "aspects_mean": 3.788888888888889,
+   "ece": 0.0393653482801156,
+   "mission_stops": 0,
+   "belief": {
+    "inputs_lost": 0,
+    "look_mismatch": 0,
+    "looks_tracked": 2907,
+    "draws_within_look_timeout": 62,
+    "horizon_lag_mean_s": 6.6504117179117115,
+    "horizon_lag_max_s": 8.700000000000045,
+    "detections_mean": 21.033333333333335
+   },
+   "anytime": {
+    "0.25": {
+     "confirmed_true": 0.5333333333333333,
+     "score": 0.4
+    },
+    "0.5": {
+     "confirmed_true": 2.1333333333333333,
+     "score": 1.6
+    },
+    "0.75": {
+     "confirmed_true": 3.3333333333333335,
+     "score": 2.033333333333333
+    },
+    "1.0": {
+     "confirmed_true": 3.8333333333333335,
+     "score": 1.9333333333333333
+    }
+   },
+   "paired_vs_C2": {
+    "n": 30,
+    "mean_diff": -0.1,
+    "sd": 1.7488912743950586,
+    "ci95_approx": [
+     -0.7386048010734205,
+     0.5386048010734206
+    ],
+    "better": 10,
+    "equal": 7,
+    "worse": 13,
+    "targets_confirmed_only_here": 30,
+    "targets_confirmed_only_by_C2": 11
+   }
+  }
+ ]
+}

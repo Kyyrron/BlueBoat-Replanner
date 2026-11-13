@@ -1,4 +1,4 @@
-"""Value of executed sequences over the remaining budget (MATH.md §10-§11, closure B and C).
+"""Value of executed sequences over the remaining budget (MATH.md §10-§11).
 
 J(a) = lam * N(background looks) + sum_c V_c(contact looks) over the UNION of new looks along
 the executed tail D_a ⊕ K, with K truncated at the budget (segment boundaries). Looks already
@@ -11,36 +11,27 @@ truncation time; only cells touched by a detour are recomputed.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
 
 import numpy as np
 
 from .looks import Looks, plan_looks, union
-from .model import SensorModel
+from .model import KEY_STRIDE, SensorModel
 from .plan import Plan
 from .spacing import altitude
-from .value import (after_miss, background_value, build_background,
+from .value import (after_miss, background_value, build_background, cell_misses,
                     contact_posterior, contact_value, detection_probability)
 
 
-@dataclass
-class Piece:
-    """A detour piece in M (segments) and its duration."""
-
-    plan: Plan
-
-    @property
-    def T(self) -> float:
-        return self.plan.duration
-
-
 class Evaluator:
-    def __init__(self, cfg, snapshot, area, K_plan: Plan | None, pending: Looks, B_rem: float):
+    def __init__(self, cfg, snapshot, area, K_plan: Plan | None, pending: Looks, B_rem: float,
+                 pending_contacts: Looks | None = None):
+        """`pending`: looks not yet in the grid (MATH §11.3, grid cells). `pending_contacts`:
+        the same over the wider contact window (default: `pending`)."""
         self.cfg = cfg
         self.snap = snapshot
         h = altitude(cfg.planning_depth_m, cfg.sensor_depth_m)
         self.model = SensorModel(cfg, snapshot.class_names, snapshot.sector_count,
-                                 snapshot.sector_origin_deg, h)
+                                 snapshot.sector_origin_deg, h, snapshot.model)
         H, W = snapshot.coverage.shape
         cx, cy = snapshot.cell_centre(*np.mgrid[0:H, 0:W])
         inside = area.contains(np.column_stack([cx.ravel(), cy.ravel()])).reshape(H, W)
@@ -57,17 +48,21 @@ class Evaluator:
             elig &= m2 > cfg.contact_exclusion_sigma ** 2
             row, col = snapshot.cell_of(c.x, c.y)
             if 0 <= row < H and 0 <= col < W:
-                cs = contact_posterior(c, self.model, cfg, int(row * W + col))
+                cell = int(row * W + col)
+                cs = contact_posterior(c, self.model, cfg, cell,
+                                       cell_misses(snapshot, self.model, cell))
                 self.contacts.append(cs)
         self.bg = build_background(snapshot, self.model, elig, cfg)
         self.pending = pending
         self.pending_keys = pending.key if len(pending) else np.zeros(0, np.int64)
-        # contact seen sets include pending looks at their cell
+        # contact seen sets include pending looks at their cell (the contact window)
+        pc = pending if pending_contacts is None else pending_contacts
+        self.pending_contacts = pc
         self.contact_pending = {}
         for cs in self.contacts:
-            m = pending.cell == cs.cell if len(pending) else np.zeros(0, bool)
-            self.contact_pending[cs.uid] = frozenset(int(g) for g in pending.g[m]) if len(
-                pending) else frozenset()
+            m = pc.cell == cs.cell if len(pc) else np.zeros(0, bool)
+            self.contact_pending[cs.uid] = frozenset(int(g) for g in pc.g[m]) if len(
+                pc) else frozenset()
         # K: the default continuation (relative time 0 = its first line's start); tails K[j:]
         self.B_rem = float(B_rem)
         self.K = K_plan
@@ -168,7 +163,7 @@ class Evaluator:
             rr = np.r_[rows_p, rows_k[mk]]
             gg = np.r_[g_p, g_k[mk]]
             pp = np.r_[pd_p, pd_k[mk]]
-            key = rr.astype(np.int64) * 64 + gg
+            key = rr.astype(np.int64) * KEY_STRIDE + gg
             order = np.lexsort((-pp, key))
             key, rr, gg, pp = key[order], rr[order], gg[order], pp[order]
             first = np.r_[True, key[1:] != key[:-1]]
@@ -203,7 +198,7 @@ class Evaluator:
     def union_value(self, looks: Looks) -> float:
         """Direct (unoptimised) value of a look set — reference for tests (MATH §10.4)."""
         rows, g, pd, _ = self._bg_new(looks)
-        key = rows.astype(np.int64) * 64 + g
+        key = rows.astype(np.int64) * KEY_STRIDE + g
         order = np.lexsort((-pd, key))
         key, rows, g, pd = key[order], rows[order], g[order], pd[order]
         first = np.r_[True, key[1:] != key[:-1]] if len(key) else np.zeros(0, bool)

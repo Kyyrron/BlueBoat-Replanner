@@ -36,7 +36,9 @@ items in short: `.claude/TODO.md`.
 
 **Belief is identified by its core hash**, because its working tree is uncommitted: the results
 were made on `fcd9531597e593b3…`; 40 missions re-run on `ac686bf69cf07f6a…` (comments only
-changed) equal their stored rows. If the hash differs again: the gate re-checks the binding;
+changed) equal their stored rows. Since 2026-11-15 the hash is `156675c3aca2ba3c…` (Belief's
+fore/aft arm, D-12: at the arm 0 this module feeds, Belief's grids are identical; gate 278/0/0;
+no mission re-run yet, `REAL_BELIEF_BINDING.md`). If the hash differs again: the gate re-checks the binding;
 re-run a sample of stored missions (the runner refuses to add rows to a folder made with
 another hash); re-run `.claude/tools/devloop_batches.sh` into a new folder (45 minutes on 4
 workers) only if a mission differs.
@@ -106,7 +108,7 @@ cd blueboat_replanner && /usr/bin/python3 -B -m test.smoke_test | tail -1
 #   expected: SMOKE: 278 passed, 0 failed, 0 skipped   (about 90 s, one core)
 /usr/bin/python3 -B -c "import sys; sys.dont_write_bytecode=True; sys.path.insert(0,'.'); \
 from blueboat_replanner.eval.belief_real import belief_info as b; i=b(); print(i['core_sha256'][:16], i['gate'])"
-#   expected: ac686bf69cf07f6a {'checks': 241, 'skipped': 0, ...}
+#   expected: 156675c3aca2ba3c {'checks': 262, 'skipped': 0, ...}
 ```
 
 - A simulation recording may be running: check before every dev-loop run, `colcon`, `ros2` or

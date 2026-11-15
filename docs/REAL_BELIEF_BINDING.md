@@ -8,6 +8,7 @@ working tree is uncommitted, it is identified by a hash of its core sources, rec
 |---|---|---|---|
 | 2026-11-12, until 20:19 | `fcd9531597e593b3…` | 240 checks, 0 skipped | the binding, the gate, every dev-loop result (19:27–20:12). **It is also the core of the installed package in `~/ros2_ws/install`** (built at 15:34), so of the Belief node the ROS check ran beside (`REPORT.md` §F) |
 | 2026-11-12, from 20:19 | `ac686bf69cf07f6a…` | 241 checks, 0 skipped | the gate (262 passed at the end of the day); 40 missions of the main run re-run on it are identical to their stored rows; the extra comparison of `DEVLOOP.md` §5.9 |
+| 2026-11-15, from 13:16 | `156675c3aca2ba3c…` | 262 checks, 0 skipped | this module's gate: 278 passed, 0 failed, 0 skipped, before and after the change. Belief's fore/aft arm (its `DESIGN.md` D-12): pings are placed from the transducers' point with `PingObs.transducer_x_offset`, a new last field defaulted to 0.0, which `belief_real.py` does not set. With an arm of 0 every grid array and contact is identical (Belief `VALIDATION_REPORT.md` §1.1); only `model_params_json` gains the key `transducer_x_offset`. **No stored mission re-run on it yet**: the owner decides |
 
 **Which copy the dev loop loads:** the checkout beside this repository, always first; the
 installed copy only when there is no checkout (an installed copy is older than the checkout

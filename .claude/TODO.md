@@ -57,3 +57,13 @@ Gazebo and boat checks with their commands: `docs/LOCAL_CHECKLIST.md`.
 - [ ] The emulator node in a built world, in Gazebo (L-E); compare its looks with Belief's
   `aspect_counts` there, as the dev loop does offline.
 - [ ] Belief does not publish its confirmation rule in `model_params_json` (RQ-8).
+- [ ] **Belief's core changed on 2026-11-15** (sha256 `156675c3…`, its fore/aft arm D-12). The
+  gate passes, but no stored mission has been re-run on it. Re-run the 40-mission sample
+  (`REAL_BELIEF_BINDING.md`), and the dev loop into a new folder only if a mission differs. The
+  owner decides. At the arm 0 this module feeds, Belief's grids are identical.
+- [ ] **Belief places live pings from the transducers' point** (fore/aft arm −0.345 m from the
+  processor since 2026-11-15; `model_params_json.transducer_x_offset`). The look predictor
+  (`core/looks.py`) places looks from the navigation pose plus the lateral lever arm only. A live
+  grid's swath is therefore 0.345 m behind the predicted one along-track; the lateral range is
+  unchanged. The dev loop feeds arm 0 and is consistent. Decide whether the predictor follows
+  the arm.

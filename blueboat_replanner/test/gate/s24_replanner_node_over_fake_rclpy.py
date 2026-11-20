@@ -118,9 +118,12 @@ class _FakeLogger:
 
 class _FakeNode:
     OVERRIDES: dict = {}
+    CLOCK: dict = {"t": 0.0}       # the node clock's seconds (/clock under use_sim_time), set by a test
 
     def __init__(self, name):
-        self.node_name, self._params, self._log = name, {}, _FakeLogger()
+        # rclpy declares use_sim_time on every node itself
+        self.node_name, self._log = name, _FakeLogger()
+        self._params = {"use_sim_time": self.OVERRIDES.get("use_sim_time", False)}
         self.subs, self.pubs, self.srvs, self.timers, self.clients = {}, {}, {}, [], {}
 
     def declare_parameter(self, n, v):
@@ -150,7 +153,8 @@ class _FakeNode:
         return self._log
 
     def get_clock(self):
-        return _NS(now=lambda: _NS(to_msg=_stamp_ns))
+        return _NS(now=lambda: _NS(to_msg=_stamp_ns,
+                                   nanoseconds=int(round(_FakeNode.CLOCK["t"] * 1e9))))
 
     def destroy_node(self):
         pass

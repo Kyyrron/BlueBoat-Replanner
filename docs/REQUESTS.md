@@ -5,16 +5,19 @@ needed, why, and what it unblocks; the owner routes it.
 
 ## Open
 
-### RQ-1 — BlueBoat-SSS-Sim: `path_source` in `full_mission_launch.py` (= Control R-3)
+### RQ-1 — BlueBoat-SSS-Sim: `path_source` in `full_mission_launch.py` (= Control R-3) — **done 2026-11-18**
 
 - **Need:** a launch argument `path_source` (default `mission`), passed as a parameter to the
   `master_control` node that `full_mission_launch.py` starts.
-- **Why:** built-world simulations cannot run replanner-owned runs today (E-20), and E4 runs in
-  built worlds.
-- **Until then:** for development only, compose `Sim_launch.py path_source:=replanner` with
-  `sss_sim_launch.py world_dir:=<world>` (`LOCAL_CHECKLIST.md` L-G). Gazebo then has no walls
-  and no limits.
-- **Unblocks:** C2/C4 Gazebo missions in a built world (L-G5) and every E4 run.
+- **Done** (2026-11-18, owner order, before the simulator's freeze tag): `full_mission_launch.py
+  path_source:=replanner` makes a built-world run replanner-owned; the launch file is outside
+  the simulator's code digest and its default is unchanged (Control `docs/REQUESTS.md` R-3).
+  This module's half, the node's clock in simulation, is the node parameter `time_source`
+  (MATH §11.3): in Gazebo `use_sim_time:=true time_source:=ros`.
+- **Use:** `LOCAL_CHECKLIST.md` L-G (the built-world launch; the composition of
+  `Sim_launch.py path_source:=replanner` with `sss_sim_launch.py` is kept as a fallback, with no
+  walls and no limits).
+- **Unblocks:** C2/C4 Gazebo missions in a built world (L-G1…L-G5) and every E4 run.
 
 ### RQ-6 — owner: the class → aspect family map
 

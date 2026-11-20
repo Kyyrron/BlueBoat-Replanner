@@ -9,13 +9,14 @@ items in short: `.claude/TODO.md`.
 | Part | State |
 |---|---|
 | ROS-free core (coverage, look predictor, value model, C1–C4 policies), executor, node, emulator node, launch files | built |
-| Offline gate `test/smoke_test.py` | **278 passed, 0 failed, 0 skipped** (2026-11-13; system python, venv python, and a shell with the ROS workspace sourced). One file per section in `test/gate/`; `colcon test` runs it (`test/test_gate.py`, 1 test) |
+| Offline gate `test/smoke_test.py` | **294 passed, 0 failed, 0 skipped** (2026-11-18; system python, venv python, and a shell with the ROS workspace sourced). One file per section in `test/gate/`; `colcon test` runs it (`test/test_gate.py`, 1 test) |
 | Reading of Belief's grid | by meaning (`CONTRACT_CONSUMED.md`), checked against BlueBoat-Belief's own core (gate [20]) |
 | Dev loop | on BlueBoat-Belief's own core (`REAL_BELIEF_BINDING.md`); **its missions are executed by the node's own executor** since 2026-11-13 (DESIGN §5.4): 40 stored missions re-run on it are identical to their rows, so the results stand (`DEVLOOP.md` §1). C2 frozen (f = 1.0, B = 2111 s); 690 missions + 150 in a labelled extra comparison, none failed (`DEVLOOP.md` §5). **Real-Belief dev loop, preliminary**, never E4 |
 | Under ROS | the node, the emulator node and both launch files ran on an isolated ROS graph (domain 47) beside Belief's installed node, with made-up sonar, navigation and Control: 42 checks, 0 failed (`LOCAL_CHECKLIST.md` L-X), **on the code of 2026-11-12**: the node changes of 2026-11-13 have not run under ROS |
-| Workspace | **built into `~/ros2_ws/install`** (2026-11-13, plain install, system python; `LOCAL_CHECKLIST.md` L-R1). No node was started from it |
-| Not done | anything with Control's real node, Gazebo, a sonar image, a detector, or the boat |
-| Git | **nothing of the 2026-11-12 and 2026-11-13 work is committed.** HEAD (`c53fe2a`) still contains the removed imitation of Belief and its results; the working tree does not. The owner commits |
+| Workspace | **built into `~/ros2_ws/install`** (2026-11-18, plain install, system python; `LOCAL_CHECKLIST.md` L-R1) |
+| In Gazebo | **one C2 development run on 2026-11-18** in a built world beside Control's node, Belief, Perception (dummy) and the GCS, on simulated time (`time_source: ros`): first path accepted, plan flown to `done`, no stale input through the render holds (`LOCAL_CHECKLIST.md` L-G1). A check, not a result |
+| Not done | C4 and the stop test in Gazebo, a trained detector, the boat |
+| Git | committed up to `2f84a46` (checked 2026-11-18). **Session 13's changes are uncommitted** (`time_source`, its launch arguments, gate [26], the documents); the owner commits |
 
 **The code fixes of 2026-11-13** (the review's [P0] code, [P1] code quality, [P2] dead code):
 - the executor checks the area (F_(margin − 0.5 m)) and the junction at c before every send,
@@ -73,9 +74,10 @@ with what each option changes.
    offline. The same kind of step as the first one; it needs a go-ahead (decision 8).
 3. **Control's real `/blueboat/update_path`** in Control's own simulation launch
    (`LOCAL_CHECKLIST.md` L-C1…L-C4). Go-ahead needed.
-4. **Gazebo missions** through the composition until R-3 lands (L-G1…L-G4): C2, then C4, then the
-   stop test. They give the decision time under load (decision 1 of §4), the 0.5 m/s and
-   3 m-turn tracking (L-K3, L-K4) and the clock check (L-G intro). Go-ahead needed.
+4. **Gazebo missions in a built world** (R-3 landed 2026-11-18; L-G1…L-G4, with
+   `use_sim_time:=true time_source:=ros`): C2, then C4, then the stop test. They give the decision
+   time under load (decision 1 of §4) and the 0.5 m/s and 3 m-turn tracking (L-K3, L-K4).
+   Go-ahead needed. One C2 development run on 2026-11-18: `LOCAL_CHECKLIST.md` L-G1.
 5. **The emulator in a built world**, its calibrator refitted on Gazebo C2 runs (L-E).
 6. Then: the E4 C2 freeze in Gazebo on tuning worlds (`C2_TUNING_PROTOCOL.md` §6), a world
    detection model fitted from Gazebo, sensitivity sweeps, real water after Control's own
@@ -105,7 +107,7 @@ results.
 cd ~/ros2_ws/src/BlueBoat-SideScanSonar/BlueBoat-Replanner
 pgrep -af 'record_ru[n]\.py'                    # must print nothing before a long or ROS command
 cd blueboat_replanner && /usr/bin/python3 -B -m test.smoke_test | tail -1
-#   expected: SMOKE: 278 passed, 0 failed, 0 skipped   (about 90 s, one core)
+#   expected: SMOKE: 294 passed, 0 failed, 0 skipped   (about 90 s, one core)
 /usr/bin/python3 -B -c "import sys; sys.dont_write_bytecode=True; sys.path.insert(0,'.'); \
 from blueboat_replanner.eval.belief_real import belief_info as b; i=b(); print(i['core_sha256'][:16], i['gate'])"
 #   expected: 156675c3aca2ba3c {'checks': 262, 'skipped': 0, ...}

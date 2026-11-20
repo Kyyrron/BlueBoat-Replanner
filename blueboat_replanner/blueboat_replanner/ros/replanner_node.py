@@ -2,17 +2,25 @@
 
 [Wiring checked through fake rclpy modules in gate [24]. Run under ROS on 2026-11-12 on an
 isolated graph beside BlueBoat-Belief's node, with made-up sonar, navigation and Control
-(test/ros_graph_check.py; LOCAL_CHECKLIST.md L-X). Never beside Control's node, in Gazebo or on
-the boat.]
+(test/ros_graph_check.py; LOCAL_CHECKLIST.md L-X). In Gazebo once, on 2026-11-18, beside Control's
+node in a built world (a C2 development run, LOCAL_CHECKLIST.md L-G1). Never on the boat.]
 
 Inputs: BeliefGrid (contract C-2 QoS), /blueboat/path_progress, /blueboat/path_update_event,
 /blueboat/odom (arrival-time freshness). Client: /blueboat/update_path. Outputs:
 /replanner/plan, /replanner/decision, /replanner/status; services ~/start, ~/stop. All logic
 lives in `ros/executor.py` (ROS-free).
 
-Clocks: freshness uses the wall clock at arrival. The grid's header stamp (Belief's evidence
-horizon, on the sonar-profile clock) is compared only with `ros_time` of Control's progress,
-which is Control's node clock: simulated time in Gazebo, wall time on the boat (MATH §11.3).
+Clocks (MATH §11.3). Arrival times, ticks, start, stop, status and `end.json` are on the node's
+time source, parameter `time_source`: `wall` (default, `time.time()`) or `ros` (the node clock,
+`self.get_clock().now()`: `/clock` under `use_sim_time`, so a simulation slowed below real time or
+paused while a slow ping renders keeps every age and timeout in simulated seconds; without
+`use_sim_time` it is the system time, the same as `wall`). Records of a `ros` run carry
+`"time_source": "ros"`; a record without the key is wall time. The decision time stays on
+`time.perf_counter` (a wall measurement by design) and the run folder is named from the wall
+clock. The timers are rclpy's, on the node clock in either mode. The grid's header stamp
+(Belief's evidence horizon, on the sonar-profile clock) is compared only with `ros_time` of
+Control's progress, which is Control's node clock: simulated time in Gazebo, wall time on the
+boat.
 """
 
 from __future__ import annotations
@@ -40,6 +48,8 @@ from ..io.recordlog import RunRecorder, data_root
 from ..io.trajectory_yaml import trajectory_doc
 from .adapters import BELIEF_TOPIC, grid_to_dict, parse_event, parse_progress
 from .executor import TERMINAL, Executor
+
+TIME_SOURCES = ("wall", "ros")
 
 
 def _yaw_of(q) -> float:
@@ -88,7 +98,7 @@ class _ServiceClient:
             # outside the try: an error in the executor's handling is not a failed call
             cb({"accepted": bool(a.accepted), "reason": a.reason, "message": a.message,
                 "active_id": a.active_id, "tau": a.tau,
-                "min_change_point": a.min_change_point}, time.time())
+                "min_change_point": a.min_change_point}, self.node._now())
         fut.add_done_callback(done)
 
 
@@ -107,6 +117,11 @@ class ReplannerNode(Node):
         self.declare_parameter("data_dir", "")
         self.declare_parameter("belief_topic", BELIEF_TOPIC)
         self.declare_parameter("tick_hz", 5.0)
+        self.declare_parameter("time_source", "wall")
+        self.time_source = str(self.get_parameter("time_source").value)
+        if self.time_source not in TIME_SOURCES:
+            raise SystemExit(f"time_source {self.time_source!r}: expected one of "
+                             f"{', '.join(TIME_SOURCES)} (MATH §11.3)")
         base = {}
         cf = self.get_parameter("config_file").value
         if cf:
@@ -150,29 +165,43 @@ class ReplannerNode(Node):
         self.create_timer(1.0, self._status)
         self.get_logger().info("replanner ready (idle): call ~/start with a mission_file")
 
+    # ------------------------------------------------------------- clock
+    def _now(self) -> float:
+        """Seconds on the node's time source: `time.time()` (wall, the default) or the node
+        clock (`ros`: /clock under use_sim_time). Every time the executor is given comes from
+        here; the decision time stays on `time.perf_counter`."""
+        if self.time_source == "ros":
+            return self.get_clock().now().nanoseconds * 1e-9
+        return time.time()
+
+    def _tag(self, rec: dict) -> dict:
+        """A record as written and published: with `time_source: ros` a copy that names its
+        clock (`"time_source": "ros"`); unchanged otherwise, so wall records stay byte-identical."""
+        return rec if self.time_source == "wall" else {**rec, "time_source": self.time_source}
+
     # ------------------------------------------------------------- inputs
     def _on_grid(self, msg):
-        self.ex.on_grid(grid_to_dict(msg), time.time())
+        self.ex.on_grid(grid_to_dict(msg), self._now())
 
     def _on_progress(self, msg):
         d = parse_progress(msg.data)
         if d is not None:
-            self.ex.on_progress(d, time.time())
+            self.ex.on_progress(d, self._now())
 
     def _on_event(self, msg):
         d = parse_event(msg.data)
         if d is not None:
-            self.ex.on_event(d, time.time())
+            self.ex.on_event(d, self._now())
             if self.rec:
                 self.rec.append("events.jsonl", d)
 
     def _on_odom(self, msg):
         p = msg.pose.pose
-        self.ex.on_odom(p.position.x, p.position.y, _yaw_of(p.orientation), time.time())
+        self.ex.on_odom(p.position.x, p.position.y, _yaw_of(p.orientation), self._now())
 
     # ------------------------------------------------------------- services
     def _srv_start(self, req, resp):
-        now = time.time()
+        now = self._now()
         if self.ex.state == "disarmed":
             ok, msg = self.ex.start(None, now)
         else:
@@ -196,27 +225,38 @@ class ReplannerNode(Node):
                                        stamp, mission.name, mission.condition)
                 with open(path) as fh:
                     self.rec.write_once("mission.yaml", fh.read())
-                self.rec.write_once("manifest.json", {
+                manifest = {
                     "schema": "blueboat_replanner_manifest/1", "mission": mission.name,
                     "condition": mission.condition, "config": mission.config.as_dict(),
                     "c2_tuned": mission.freeze,
                     "contract": "belief_grid/0", "control_schemas":
                         ["blueboat_path_progress/1", "blueboat_path_update_event/1"],
-                    "started_wall": now})
+                    "started_wall": now}
+                if self.time_source != "wall":     # additive: the clock of every time below
+                    manifest.update(started_wall=time.time(), started_clock=now,
+                                    time_source=self.time_source,
+                                    use_sim_time=self._use_sim_time())
+                self.rec.write_once("manifest.json", manifest)
         resp.success, resp.message = bool(ok), msg
         return resp
 
+    def _use_sim_time(self):
+        try:
+            return bool(self.get_parameter("use_sim_time").value)
+        except Exception:  # noqa: BLE001 - not declared (a fake node): unknown
+            return None
+
     def _srv_stop(self, req, resp):
-        ok, msg = self.ex.stop(time.time())
+        ok, msg = self.ex.stop(self._now())
         resp.success, resp.message = bool(ok), msg
         return resp
 
     # ------------------------------------------------------------- loop
     def _tick(self):
-        now = time.time()
+        now = self._now()
         self.ex.tick(now)
         while self._n_records < len(self.ex.records):
-            r = self.ex.records[self._n_records]
+            r = self._tag(self.ex.records[self._n_records])
             self._n_records += 1
             self.pub_dec.publish(String(data=json.dumps(r, default=str)))
             if self.rec:
@@ -244,7 +284,7 @@ class ReplannerNode(Node):
     def _log_events(self):
         """events.jsonl: the executor's own events (a Belief restart, a transform jump)."""
         while self._n_events < len(self.ex.events):
-            e = self.ex.events[self._n_events]
+            e = self._tag(self.ex.events[self._n_events])
             self._n_events += 1
             self.get_logger().warn(f"replanner event: {json.dumps(e, default=str)}")
             if self.rec:
@@ -273,7 +313,7 @@ class ReplannerNode(Node):
         if self._end_written or not self.rec:
             return
         self._end_written = True
-        self.rec.write_once("end.json", self.ex.end_record(now))
+        self.rec.write_once("end.json", self._tag(self.ex.end_record(now)))
 
     def _log_requests(self):
         """requests.jsonl: one line per request, written once its answer is known (the
@@ -285,7 +325,7 @@ class ReplannerNode(Node):
                 break                       # still in flight
             self._n_requests += 1
             if self.rec:
-                self.rec.append("requests.jsonl", r)
+                self.rec.append("requests.jsonl", self._tag(r))
 
     def _publish_plan(self):
         msg = Path()
@@ -309,7 +349,7 @@ class ReplannerNode(Node):
         self.pub_plan.publish(msg)
 
     def _status(self):
-        s = self.ex.status(time.time())
+        s = self._tag(self.ex.status(self._now()))
         if self.rec:
             s["output_dir"] = self.rec.dir
             self.rec.append("status.jsonl", s)
@@ -327,7 +367,7 @@ def main(args=None):
         pass
     finally:
         if node.rec:
-            node._write_end(time.time())
+            node._write_end(node._now())
             node.rec.close()
         node.destroy_node()
         rclpy.try_shutdown()

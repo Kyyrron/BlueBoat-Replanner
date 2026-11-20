@@ -9,8 +9,10 @@ L-B6, L-B7 (binding, gate and the dev-loop runs), L-R2.
 build, ROS domain 47, Belief's installed node, made-up sonar, navigation and Control; no
 Gazebo, no Control node, no boat): L-R1 (scratch build), L-R3, L-R4, L-R5, L-R6, L-B1, and the
 emulator node on that graph (L-E1…L-E3 in part).
-**Not done:** everything that needs Control's node, Gazebo or the boat (L-C, L-K, L-G, L-S,
-L-O, and the emulator in a built world).
+**Done on 2026-11-18 in Gazebo, a built world, with Control's node, Belief, Perception (dummy) and the
+GCS:** L-G1 (one C2 development run, below).
+**Not done:** the rest of what needs Control's node, Gazebo or the boat (L-C, L-K, L-G2…L-G4,
+L-S, L-O, and the emulator in a built world).
 
 **Suggested order:** L-0 → L-R1/L-R2 (build, offline gate) → L-C1…L-C4 (Control) → L-B1…L-B4
 (Belief binding) → L-R3…L-R6 (node graph, QoS, adapter) → L-E (emulator) → L-K3/L-K4 (speed,
@@ -18,8 +20,10 @@ turns) → L-G1…L-G4 (Gazebo missions) → L-B5/L-B6/L-B7 (latency, model, dev
 → the rest.
 
 **What the offline gate already covers, so a failure here points at ROS/DDS or a neighbour:**
-- the gate (`test/smoke_test.py`, **278 passed / 0 failed / 0 skipped** on 2026-11-13, with
+- the gate (`test/smoke_test.py`, **294 passed / 0 failed / 0 skipped** on 2026-11-18, with
   `/usr/bin/python3` (numpy 1.26.4) and `~/ros2_ws/.venv/bin/python3` (numpy 2.4.4); about 90 s);
+- the node's clock ([26]): `time_source: wall` byte-identical to the node before the parameter,
+  `ros` feeding the executor simulated seconds through a 16 s render hold at 0.1× real time;
 - the executor against a Control stub cross-checked with Control's own `PathUpdater` ([21], [23]);
 - the reading of Belief's grid against BlueBoat-Belief's own core ([20], [22]);
 - `replanner_node.py` and `eval/emulator_node.py` driven through **fake** rclpy, message and
@@ -274,53 +278,86 @@ Gazebo:** everything below, with the calibrator of that world and the look-by-lo
 
 ## L-G Gazebo missions
 
-Until R-3 lands (a `path_source` argument in SSS-Sim's `full_mission_launch.py`, RQ-1), use a
-development composition: the sonar renders the world folder from the pose, while Gazebo flies
-the boat in the stock ocean world (no walls or limits).
-
-**Clock, to settle before L-G1.** `replanner_launch.py` declares no `use_sim_time`, and the node
-measures freshness, timeouts and its decision time on the wall clock. Under Gazebo, Control's
-`ros_time` and the sonar stamps are sim time; the evidence horizon is converted through
-Control's (`ros_time`, τ) pairs, so it does not need the node's clock (MATH §11.3). Check in
-L-G1 that `/replanner/decision` names `source: stamp` for the horizon; if the simulation runs
-slower than real time (the ray-cast sonar), wall-clock freshness and lead margins are
-conservative, not wrong.
-Use separate terminals, each sourced with `source ~/ros2_ws/env.sh`:
+**The default since 2026-11-18 is a built world** (R-3 / RQ-1 done): the simulator's
+`full_mission_launch.py` takes `path_source:=replanner`, so its `master_control` holds at the spawn
+pose until the first accepted `/blueboat/update_path`, with the world's walls, limits and sea. Run
+it through the superproject recorder, which also runs the GCS (its seabed images feed Perception)
+and starts Perception like MCS does; with `path_source:=replanner` it ends the run on
+`/replanner/status` (`tools/sim_record/README.md`, "Replanner-owned runs"). Use separate
+terminals, each sourced with `source ~/ros2_ws/env.sh`:
 
 ```bash
-ros2 launch blueboat_control Sim_launch.py controller_type:=PID path_source:=replanner
+cd ~/ros2_ws/src/BlueBoat-SideScanSonar
+python3 tools/sim_record/record_run.py --world <world folder> --trajectory <MCS path of the world> \
+    --sensor harbour_fast --name <run> --rtf 2.0 --waves harbour_chop --controller MPC \
+    --out ~/ros2_ws/sim_runs/pipeline_dev --private-data-root \
+    --extra path_source:=replanner sonar_fouling:=<the world's metadata run.sonar_fouling>
+```
+The `--trajectory` is only what the launch requires (`trajectory_file`); nothing follows it. When the
+recorder's log says "path deployed":
+```bash
+ros2 launch blueboat_belief belief_launch.py area_file:=<world folder> use_sim_time:=true \
+    record_inputs:=true data_dir:=<run folder>
 ```
 ```bash
-ros2 launch blueboat_sss_sim sss_sim_launch.py world_dir:=$HOME/worlds/<path>/<world>
+ros2 launch blueboat_replanner replanner_launch.py mission_file:=<abs mission_c2.yaml> \
+    use_sim_time:=true time_source:=ros data_dir:=<run folder>
 ```
-```bash
-ros2 launch blueboat_sss SSS_processing_launch.py
-```
-```bash
-ros2 launch blueboat_belief belief_launch.py area_file:=<area.yaml> use_sim_time:=true
-```
-The area file comes from the mission file, so the two cannot differ:
-`ros2 run blueboat_belief blueboat-belief-make-area --out area.yaml --from-mission <mission.yaml>`.
-The Replanner refuses a mission whose polygon is not inside Belief's area.
-```bash
-ros2 launch blueboat_replanner emulator_launch.py world_dir:=$HOME/worlds/<path>/<world> seed:=1 calib_a:=<a> calib_b:=<b>
-```
-```bash
-ros2 launch blueboat_replanner replanner_launch.py mission_file:=<abs mission_c2.yaml>
-```
+Once Control's progress is `awaiting_path` and Belief's grid has `odom_to_map_valid`:
 ```bash
 ros2 service call /replanner/start std_srvs/srv/Trigger {}
 ```
 
+**Clock.** In Gazebo pass `use_sim_time:=true time_source:=ros`: arrival times, freshness, the
+answer and reconcile time-outs, the start time-out and every record time are then simulated
+seconds, the node clock on `/clock` (the records carry `"time_source": "ros"`, the manifest a wall
+`started_wall` beside `started_clock`). This is needed, not a refinement: the production ray-cast
+runs slowed (`real_time_factor`) and Gazebo is paused while a slow ping renders (1–16 s near a
+quay), so on the wall clock Control's 10 Hz progress (simulated time) looks stale below half real
+speed and during every pause, and no path is sent (the gate's [26] shows it). The tick and status
+timers are rclpy's, on the node clock in either mode: under `use_sim_time` there is no tick while
+Gazebo is paused. The decision time stays wall (`time.perf_counter`); with the simulation at or
+below real time, ageing `min_change_point` by it is conservative. On the boat keep the defaults
+(`use_sim_time:=false time_source:=wall`); `time_source:=ros` without `use_sim_time` is the system
+time and equals `wall`. The evidence horizon does not depend on the node's clock either way: it is
+converted through Control's (`ros_time`, τ) pairs (MATH §11.3). Check in L-G1 that
+`/replanner/decision` names `source: stamp` for the horizon.
+
+**Fallback (development only, no walls or limits):** the sonar renders the world folder from the
+pose while Gazebo flies the boat in the stock ocean world:
+```bash
+ros2 launch blueboat_control Sim_launch.py controller_type:=PID path_source:=replanner
+ros2 launch blueboat_sss_sim sss_sim_launch.py world_dir:=$HOME/worlds/<path>/<world>
+ros2 launch blueboat_sss SSS_processing_launch.py
+ros2 launch blueboat_belief belief_launch.py area_file:=<area.yaml> use_sim_time:=true
+ros2 launch blueboat_replanner emulator_launch.py world_dir:=$HOME/worlds/<path>/<world> seed:=1 calib_a:=<a> calib_b:=<b>
+ros2 launch blueboat_replanner replanner_launch.py mission_file:=<abs mission_c2.yaml> use_sim_time:=true time_source:=ros
+ros2 service call /replanner/start std_srvs/srv/Trigger {}
+```
+(one terminal each). The area file can come from the mission file, so the two cannot differ:
+`ros2 run blueboat_belief blueboat-belief-make-area --out area.yaml --from-mission <mission.yaml>`.
+The Replanner refuses a mission whose polygon is not inside Belief's area.
+
 Mission file:
-- `areas` = the world's `metadata.yaml` `limits.corners_gps` (SW, SE, NE, NW);
-- `planning_depth_m` = the world depth;
-- the C2 settings from `config/c2_tuned.yaml`;
+- `areas`: one polygon inside the world's `metadata.yaml` `limits` (WGS-84, as `corners_gps`), clear
+  of quays, pontoons and structures, and where the altitude stays inside the validated envelope
+  (4.5–7.0 m, `SIM_VALIDITY_CONDITIONS.md` §2: depth ≤ 7.2 m with the 0.22 m transducer depth);
+- `planning_depth_m` = the depth over the polygon;
+- the C2 settings come from `config/c2_tuned.yaml` (the node applies them);
 - `condition: C2`, then repeat with `condition: C4`.
 
-- [ ] L-G1 C2 mission. Expect `/replanner/status`: `waiting` → `starting` → `running` → `done`.
+- [x] L-G1 C2 mission. Expect `/replanner/status`: `waiting` → `starting` → `running` → `done`.
   Expect exactly one accepted request, progress `following` then `end_reached`, a run folder under
   `<root>/data/Replanner_data/`, and Control's pathlog CSV with 1 accepted row.
+  **Seen on 2026-11-18** (a development run, never a result; `~/ros2_ws/sim_runs/pipeline_dev/
+  pipe13_c2_nominal_s2/RUN_NOTES.md`): campaign world `e4_example-nominal-s2`, production ray-cast,
+  MPC, `harbour_chop`, ×2 requested with Gazebo held around every ping. `starting` → `running` →
+  `done` ("plan exhausted", τ 373.7 of B = 373.6 s); one request, accepted; Control's pathlog
+  `request_accepted`, `activated`, `end_reached`; maximum input ages while running 0.10 s
+  (progress), 1.05 s (grid), 0.44 s (odometry), simulated time, no stale reason; every record
+  `time_source: ros`. C2 has no decision point, so the decision's `source: stamp` is not
+  observable here: Belief's grid stamp ran 8.4–8.7 s behind Control's `ros_time`, both
+  simulated, inside the stamp rule (to be seen in L-G2).
 - [ ] L-G2 C4 mission. Expect at least one `request_accepted` **during the run**, no refusal,
   `missed_lead` 0 or rare. The decision JSON must carry candidates with J/J2. The boat must
   actually fly the revisit leg: `/replanner/plan` must change, and `/blueboat/odom` must follow it.
@@ -329,4 +366,4 @@ Mission file:
   engaged: expect `stop_rejected` with `stop_in_effect: false` (L-C6).
 - [ ] L-G4 Record the bag, time per decision, and τ vs wall time (0.5 m/s achieved, L-K3).
   Report everything as [DEMO] with the run id.
-- [ ] L-G5 When R-3 lands, repeat L-G1/L-G2 with `full_mission_launch.py` in a built world.
+- [x] L-G5 R-3 landed on 2026-11-18: L-G1…L-G4 run in a built world by default (above).

@@ -657,6 +657,20 @@ L_lag is the governor's bound on how far the boat may trail the path parameter
 The history is cleared when the run changes, on a `cleared` event, and when τ or `ros_time`
 steps backwards.
 
+**The node's own clock** (`time_source`, 2026-11-18). Every age, time-out and record time of the
+executor (input freshness, the answer and reconcile time-outs, the start time-out, `wall_time`,
+`sent`, `answered`) is measured on one clock that the node chooses: `wall` (default, `time.time()`)
+or `ros` (the node clock, `/clock` under `use_sim_time`). The horizon above does not use it: τ_h
+comes from Control's (`ros_time`, τ) pairs and the grid's stamp alone. In Gazebo the limits must
+be simulated seconds: Control's progress is 10 Hz in simulated time, the ray-cast run is slowed
+below real time and paused while a slow ping renders, so on the wall clock a 1 s freshness limit
+fails below half real speed and in every pause, and the 0.2 s pre-send limit fails sooner.
+Hence `use_sim_time:=true time_source:=ros` in Gazebo, the defaults on the boat (where
+`time_source: ros` without `use_sim_time` is the system time, the same as `wall`). The decision
+time stays a wall measurement (`time.perf_counter`): it ages `min_change_point` by at most one
+path-second per wall second spent, conservative when the simulation runs at or below real time
+(above it, the ageing would under-estimate). Records of a `ros` run carry `"time_source": "ros"`.
+
 **τ_h in the dev loop.** The dev loop runs the executor (DESIGN §5.4), so τ_h is read by the
 rule above. Its progress carries `ros_time` = T0 + τ, the clock of Belief's stamps there, and
 its configuration sets L_lag = 0 (perfect tracking): τ_h = τ(stamp) = stamp − T0.

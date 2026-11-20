@@ -12,6 +12,13 @@ through **one** coverage generator and **one** executor:
 The brief is `docs/REPLANNER_BRIEF.md` (read-only). The contract with Belief is `belief_grid/0`:
 Belief's `docs/topics.md` is its text, `docs/CONTRACT_CONSUMED.md` is how this module reads it.
 
+Simulated results follow `../SIM_VALIDITY_CONDITIONS.md` (superproject root; simulator frozen 2026-11-18,
+literal verdict NOT READY, a model-conditional tool). A time difference between conditions inside **±3 % plus
+0.6 s per turn** is not a result (simulated MPC turns run up to 20 % long, which works against the adaptive
+conditions); simulated position error is up to about **1.1 m right after a turn** (0.25 m on straight legs).
+Compare conditions paired (same world, seeds, sea schedule) and at both R1 ends. The Replanner has run in
+Gazebo once (one C2 development run in a built world, 2026-11-18, `docs/LOCAL_CHECKLIST.md` L-G1); the dev-loop numbers are preliminary and predate Belief's fore/aft arm (CR-REP-1).
+
 ## 1. Authority and documents
 - Project rules: root `.claude/CLAUDE.md` and `project_synthesis.md` (there is no context pack).
 - **Where the work stands, the owner's decisions, what comes next: `docs/HANDOVER.md`** (read
@@ -102,7 +109,7 @@ cd blueboat_replanner && python3 -B -m test.smoke_test              # the gate (
 .claude/tools/devloop_batches.sh                                    # dev loop on Belief's core: C2 freeze, then every batch
 .claude/tools/ros_check.sh                                          # scratch build + the nodes on an isolated ROS domain beside Belief's node (made-up inputs, no Gazebo; ~28 min)
 colcon build --packages-select blueboat_replanner                   # needs blueboat_interfaces, blueboat_belief_interfaces (L-R1)
-ros2 launch blueboat_replanner replanner_launch.py mission_file:=<abs yaml>
+ros2 launch blueboat_replanner replanner_launch.py mission_file:=<abs yaml>   # Gazebo: + use_sim_time:=true time_source:=ros
 ros2 service call /replanner/start std_srvs/srv/Trigger {}
 ```
 - **Gate.** The Stop hook in `.claude/settings.json` runs `.claude/tools/smoke_gate.sh`, only when
@@ -111,9 +118,12 @@ ros2 service call /replanner/start std_srvs/srv/Trigger {}
   `path_update.PathUpdater` and BlueBoat-Belief's core when they sit beside this repo. It imports
   them with bytecode writing off, so nothing is written into their trees.
 
-## 6. Status (2026-11-13; details in `docs/HANDOVER.md`)
-- Built: core, executor, node, emulator node, launch files. Gate **278 passed, 0 failed,
-  0 skipped**; `colcon test` runs it.
+## 6. Status (2026-11-18; details in `docs/HANDOVER.md`)
+- Built: core, executor, node, emulator node, launch files. Gate **294 passed, 0 failed,
+  0 skipped** (2026-11-18); `colcon test` runs it.
+- The node's clock (2026-11-18, RQ-1): parameter `time_source` `wall` (default, byte-identical
+  records, gate [26]) | `ros` (node clock); launch arguments `use_sim_time`, `time_source`. In
+  Gazebo `use_sim_time:=true time_source:=ros` (MATH §11.3, `LOCAL_CHECKLIST.md` L-G).
 - Dev loop on BlueBoat-Belief's own core, its missions executed by the node's executor
   (40 stored missions re-run on it are identical): C2 frozen, 690 missions + 150
   (`docs/DEVLOOP.md` §5).
@@ -121,6 +131,10 @@ ros2 service call /replanner/start std_srvs/srv/Trigger {}
   mid-mission and under a budget cut they are ahead; the aspect model shows no effect
   (C4 = C4_iso).
 - Under ROS: only on an isolated graph beside Belief's node with made-up inputs, on the code
-  of 2026-11-12 (`docs/LOCAL_CHECKLIST.md` L-X). Built into `~/ros2_ws/install` (2026-11-13);
-  never with Control's node, Gazebo or the boat.
-- Not committed: the work of 2026-11-12 and 2026-11-13.
+  of 2026-11-12 (`docs/LOCAL_CHECKLIST.md` L-X). Built into `~/ros2_ws/install` (2026-11-18).
+- In Gazebo once, 2026-11-18 (L-G1): a C2 development run in a built world beside Control's
+  node, Belief, Perception (dummy) and the GCS, `use_sim_time:=true time_source:=ros`; first path
+  accepted, plan to `done`, no stale input through the render holds. Never on the boat; C4 and
+  the stop test in Gazebo not yet (L-G2, L-G3).
+- Uncommitted on 2026-11-18 (session 13, for the owner to commit): `time_source`, its launch
+  arguments, gate [26], the documents. Package code before it: `2f84a46`.

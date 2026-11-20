@@ -6,7 +6,9 @@ Status: implemented in `ros/replanner_node.py` and `eval/emulator_node.py`. Thei
 QoS profiles, services, schemas, records) is checked through fake rclpy modules (gate [24]).
 **On 2026-11-12 both ran under ROS on an isolated graph beside BlueBoat-Belief's node**, with
 made-up sonar, navigation and Control (`test/ros_graph_check.py`; what it showed and what it
-did not: `REPORT.md` §F). They have never run beside Control's node, in Gazebo or on the boat.
+did not: `REPORT.md` §F). The replanner node ran once beside Control's node, in Gazebo, on
+2026-11-18 (a C2 development run in a built world, `LOCAL_CHECKLIST.md` L-G1); the emulator node
+never has; neither on the boat.
 
 ## 1. Online subscriptions (`replanner_node`)
 
@@ -50,6 +52,17 @@ did not: `REPORT.md` §F). They have never run beside Control's node, in Gazebo 
 - readers ignore unknown keys;
 - a reader refuses a payload whose `schema` name is unknown, or whose version is greater than it
   knows.
+
+**Times in the records (`time_source`, additive 2026-11-18).** `wall_time` (decision, status, end,
+event), `sent` / `answered` (requests) and every `*_age_s` are seconds on the node's time source
+(parameter `time_source`, MATH §11.3). A record without a `time_source` key is wall time (the
+default; such records are byte-identical to those of before the parameter). With
+`time_source: ros` every decision, request, status, event and end record carries
+`"time_source": "ros"`, and those values are the node clock's seconds: simulated time under
+`use_sim_time`. `ros_time` is always Control's node clock, and `compute_s` always wall seconds.
+The manifest of a `ros` run also has `time_source`, `use_sim_time` and `started_clock` (the node
+clock at `~/start`); its `started_wall` stays the wall time. Control's own events in
+`events.jsonl` are stored as received.
 
 ### 5.1 `blueboat_replanner_decision/1`
 
@@ -165,7 +178,7 @@ grids arrive at all, and `grid_note` why the last one is not usable (for example
 | ↳ `plans/<k>-<id>.yaml` | `blueboat_trajectory/1`, **frame M**, `geo_anchor` = datum (θ 0), `loop: false` | write once each | yes |
 | ↳ `belief.json` | `blueboat_replanner_belief/1`: the grid the first path was planned on (datum, transform, classes, Belief's area, the model flags of `model_params_json`) | write once | yes |
 | ↳ `decisions.jsonl`, `requests.jsonl`, `status.jsonl`, `events.jsonl` | one JSON per line. A `requests.jsonl` line: `id`, `kind`, `change_point`, `n`, `sent` and, once answered, `answer` and `answered` (its arrival time). `events.jsonl` holds Control's events and this module's own (`blueboat_replanner_event/1`: `belief_restart`, `transform_jump`) | append | yes |
-| ↳ `end.json` | `blueboat_replanner_end/1`: final state, reason, counts, end τ and wall time, and `decision_time_s` (`n`, `mean`, `max`, `allowance_s`, `over_allowance` = how many decisions took longer than the allowance; null when nothing was measured); written when the run reaches `done`, `failed`, `run_ended` or `stopped_holding`, else at shutdown | write once | yes |
+| ↳ `end.json` | `blueboat_replanner_end/1`: final state, reason, counts, end τ and time (`wall_time`, on the node's time source, §5), and `decision_time_s` (`n`, `mean`, `max`, `allowance_s`, `over_allowance` = how many decisions took longer than the allowance; null when nothing was measured); written when the run reaches `done`, `failed`, `run_ended` or `stopped_holding`, else at shutdown | write once | yes |
 | world `metadata.yaml` (`blueboat_world_meta/1`) | read-only (E-36) | read | **no — `eval/` only** |
 | `eval/` results: `<root>/data/Replanner_eval/<name>/results.jsonl`, `summary.json`, `manifest.json` | JSONL (resumable) | write | no |
 

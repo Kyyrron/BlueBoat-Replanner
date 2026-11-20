@@ -16,8 +16,8 @@ that any of its parts needs.
 
 Nothing here is an E4 result. The headline comparison of the thesis is the Gazebo campaign with
 a trained, calibrated detector (synthesis §4, §6.2 ⚠, §8.4), and none of it has run. Three things
-it needs do not exist: detector weights, a `path_source` argument in the built-world launch
-(Control R-3), and the Evaluation module.
+it needs do not exist: detector weights, a C2 freeze on Gazebo tuning worlds, and the Evaluation
+module (the built-world launch's `path_source`, Control R-3, exists since 2026-11-18).
 
 ## A. Checked against a neighbour's code (read-only, no file written in another module)
 
@@ -38,8 +38,8 @@ These cover the **ROS-free cores** only. What ran under ROS, and what did not, i
 
 ## B. Tested offline — the gate
 
-`cd blueboat_replanner && python3 -B -m test.smoke_test`: **278 passed, 0 failed, 0 skipped**
-(2026-11-13, on the laptop, in three environments: `/usr/bin/python3` 3.12 / numpy 1.26.4;
+`cd blueboat_replanner && python3 -B -m test.smoke_test`: **294 passed, 0 failed, 0 skipped**
+(2026-11-18, on the laptop, in three environments: `/usr/bin/python3` 3.12 / numpy 1.26.4;
 `~/ros2_ws/.venv/bin/python3` / numpy 2.4.4; and `/usr/bin/python3` in a shell with the ROS
 workspace sourced. On 2026-11-12 the last of these exposed that the binding loaded Belief's
 installed copy instead of its checkout, corrected the same evening. No ROS is used; about 90 s
@@ -66,6 +66,7 @@ one file (`test/gate/`); a section that raises counts as one failure and the res
 | [23] executor vs Control stub | 35 | **the pre-send checks: a tail moved 3 m into the margin band is never sent, one moved 0.3 m fails the junction check, unsent; no first request while the service is not ready (named at the start time-out); an answer handled at its arrival time**; first path; C2 to `done`; C3 decision accepted; stop and disarm (D-1…D-5); missed lead (G-1); stale belief; lost answer; foreign update; **horizon conversion and its fallbacks, Belief restart, area refusal, mission stop, record fields, end record; a grid that is received but not usable is reported with its reason; the decision time is measured only with the node's clock, written to the records, and counted against the lead (a decision that used it up is not sent)** |
 | [24] nodes over fake rclpy | 15 | node graph and BeliefGrid QoS profile; `~/start`; a C3 run through the node; plan, status and decision schemas; run records including `belief.json`, `end.json`, the C2 freeze in the manifest and each answer's arrival time; emulator: one draw per look, one array per image, fill convention; launch arguments = typed node parameters |
 | [25] emulator | 9 | seabed images by track distance; looks by sector and time-out; the turn gate; the reported class |
+| [26] node clock (`time_source`) | 16 | **with `wall` (the default) every record file and every published payload is byte-identical to the node of `2f84a46`**, the last before the parameter (its source from git, run on the same fake rclpy and fixed clocks); with `ros` the executor is given the node clock's seconds and every record says so, the manifest keeps a wall `started_wall`; an unknown value is refused; **the executor on a simulated clock at 0.1× real time with a 16 s render hold at the decision keeps progress and belief fresh and sends the decision, while the same schedule on the wall clock goes stale**; a simulated clock that runs on without messages makes them stale (1.5 s, 5.5 s) |
 
 [24] uses **fake** modules written in the test. It proves the wiring of the two node files and
 the launch files, nothing about DDS, QoS matching, executors or the real message classes: those
@@ -257,8 +258,8 @@ stored result is affected).
 
 `LOCAL_CHECKLIST.md`. The items that gate a thesis result (`.claude/TODO.md` [P0]):
 1. Control's `/blueboat/update_path` live (L-C).
-2. Gazebo missions C2 and C4 with live path updates (L-G1…L-G4), through the composition until
-   Control R-3 lands (L-G5); the decision time under load is read from their records.
+2. Gazebo missions C2 and C4 with live path updates (L-G1…L-G4), in a built world since Control
+   R-3 landed (2026-11-18); the decision time under load is read from their records.
 3. 0.5 m/s and 3 m turns achieved in Gazebo (L-K3, L-K4).
 4. The E4 C2 freeze in Gazebo on tuning worlds (C2_TUNING_PROTOCOL §6).
 5. Real-water authority after a supervised dry run (DESIGN §12, O-7).

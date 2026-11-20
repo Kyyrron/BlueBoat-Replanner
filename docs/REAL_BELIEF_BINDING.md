@@ -30,7 +30,7 @@ Levels of evidence used below: **verified in code** (read in Belief's or this mo
 |---|---|---|
 | What is read | the `BeliefGrid` message on `/belief_map/belief_grid` | the same fields, from Belief's `to_grid_dict` |
 | Belief code imported | none | Belief's core, through `eval/belief_real.py` only |
-| Status | gated through fake ROS modules; **run under ROS on 2026-11-12 on an isolated graph beside Belief's installed node, with made-up inputs** (`REPORT.md` §F). Never in Gazebo, never with a real detector | **tested offline** on Belief's core |
+| Status | gated through fake ROS modules; **run under ROS on 2026-11-12 on an isolated graph beside Belief's installed node, with made-up inputs** (`REPORT.md` §F); in Gazebo once, beside Belief's node, on 2026-11-18 (a C2 development run, `LOCAL_CHECKLIST.md` L-G1). Never with a real detector | **tested offline** on Belief's core |
 
 Both go through the same adapter (`ros/adapters.grid_to_dict`), the same validator
 (`core/evidence.validate_grid`) and the same planner code.
@@ -128,8 +128,8 @@ turns, where the predictor's poses are too sparse (conservative, MATH §5), and 
 
 ```bash
 cd blueboat_replanner
-/usr/bin/python3 -B -m test.smoke_test                 # SMOKE: 278 passed, 0 failed, 0 skipped (2026-11-13)
-~/ros2_ws/.venv/bin/python3 -B -m test.smoke_test      # SMOKE: 278 passed, 0 failed, 0 skipped
+/usr/bin/python3 -B -m test.smoke_test                 # SMOKE: 294 passed, 0 failed, 0 skipped (2026-11-18)
+~/ros2_ws/.venv/bin/python3 -B -m test.smoke_test      # SMOKE: 294 passed, 0 failed, 0 skipped
 cd .. && .claude/tools/devloop_batches.sh devloop_real_2026-11-12 4      # 19:27–20:12, exit 0
 .claude/tools/ros_check.sh                                               # 21:27–21:52 (by hand), 42 checks, 0 failed
 cd blueboat_replanner && /usr/bin/python3 -B -m blueboat_replanner.eval.compare \

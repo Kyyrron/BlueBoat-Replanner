@@ -4,8 +4,8 @@ Open items only. Where the work stands and the owner's decisions: `docs/HANDOVER
 Gazebo and boat checks with their commands: `docs/LOCAL_CHECKLIST.md`.
 
 ## [P0] the owner's
-- [ ] **Commit** the working tree (the 2026-11-12 and 2026-11-13 work is uncommitted; HEAD
-  `c53fe2a` still holds the removed imitation of Belief), then the superproject gitlink.
+- [x] **Commit** the working tree (checked 2026-11-18: done; the tree is clean at `2f84a46`, which the
+  superproject gitlink pins).
 - [ ] **Go-ahead for the ROS check on the new node code** (`.claude/tools/ros_check.sh`, isolated
   domain, made-up inputs, no Gazebo, about 28 min): the node's changes of 2026-11-13 (C2 freeze
   applied, pre-send area and junction checks, readiness, answer arrival time) have run offline
@@ -15,10 +15,11 @@ Gazebo and boat checks with their commands: `docs/LOCAL_CHECKLIST.md`.
 
 ## [P0] blocking a thesis result
 - [ ] **Control's real path update, live** (L-C1…L-C4). Go-ahead needed.
-- [ ] **Gazebo missions** L-G1…L-G4 (C2, C4, stop test), through the composition until R-3
-  lands (RQ-1), then L-G5. They give the decision time under load (decision 1) from
-  `end.json` and the decision records. Settle the clock first (L-G intro: no `use_sim_time`
-  in `replanner_launch.py`; the node uses wall time).
+- [ ] **Gazebo missions** L-G1…L-G4 (C2, C4, stop test), in a built world since R-3 landed
+  (2026-11-18, RQ-1 done; `LOCAL_CHECKLIST.md` L-G), with `use_sim_time:=true time_source:=ros`.
+  They give the decision time under load (decision 1) from `end.json` and the decision records.
+  **L-G1 done 2026-11-18** (one C2 development run; the chain ran end to end). Open: L-G2 (C4,
+  where a decision record shows `source: stamp`), L-G3 (stop), L-G4.
 - [ ] **0.5 m/s achieved in Gazebo** without τ throttling (L-K3), and 3 m arcs tracked (L-K4).
 - [ ] **Real-water authority** (DESIGN §12 O-7): a supervised dry run after Control's own
   on-water path-update test.
@@ -28,6 +29,8 @@ Gazebo and boat checks with their commands: `docs/LOCAL_CHECKLIST.md`.
 ## [P1] model and protocol
 - [ ] The clocks under ROS: Control's `ros_time` and the sonar stamps must be one clock in
   simulation for the evidence horizon (MATH §11.3); the record names the fallback otherwise.
+  Seen in Gazebo on 2026-11-18 (L-G1): the grid stamp 8.4–8.7 s behind `ros_time`, both
+  simulated, inside the stamp rule; a decision record saying `stamp` is still to be seen (C4).
 - [ ] The node decides inside its timer callback: while it computes, no progress, grid or
   odometry message is handled. The time is counted against the lead (DESIGN §5.2 rule 2), so
   the cost is a lost decision, never a late request. If decisions are lost in Gazebo: the
@@ -46,7 +49,9 @@ Gazebo and boat checks with their commands: `docs/LOCAL_CHECKLIST.md`.
   not run. Report them as sensitivity, never as a choice made by looking at C4 − C2.
 
 ## [P1] code quality
-- [ ] A `use_sim_time` argument in both launch files, once L-G settles the clock question.
+- [x] `use_sim_time` and `time_source` in `replanner_launch.py` (2026-11-18, MATH §11.3, gate [26]).
+  `emulator_launch.py` needs none: the emulator node has no timer and no clock, it stamps from
+  the pings.
 
 ## [P2] scope and refinements
 - [ ] Multiple areas per mission (decision 6).

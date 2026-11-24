@@ -1,207 +1,141 @@
 # BlueBoat-Replanner
 
-The aspect-aware replanner of the BlueBoat side-scan sonar survey. During a survey it decides,
-at each decision point, whether the boat carries on or goes back to look at a possible target
-again **from a chosen direction**. It makes the boat fly that change in the same run, through
-Control's live path update. It also plans every survey type the project compares, so they all
-share one coverage generator and one executor.
+The aspect-aware replanner of the BlueBoat side-scan sonar survey. During a survey, at each decision
+point, it decides whether the boat carries on or goes back to look at a possible target again **from
+a chosen direction**, and the boat flies that change in the same run. It also plans every survey type
+the project compares, so they all share one coverage generator and one executor.
 
-> **Caveats.** The Replanner has **never run on the boat**. In Gazebo it has run once (one C2
-> development run). Belief's scores are not probabilities until a calibrated detector exists, so
-> every decision built on them is score-conditional, and every result is model-conditional.
+![The two baseline survey plans the Replanner generates](docs/img/survey_plans_c1_c2.png)
 
-## Where it fits
+*Two plans the Replanner generates for the same 120 × 60 m area (blue), coloured by time. Left: C1,
+a single pass of parallel lines. Right: C2, the baseline, two passes at right angles. C2 takes about
+twice as long; its duration is the time budget every other condition gets. The adaptive conditions
+start like these plans and insert revisits during the survey.*
 
-```
-sonar ──► Perception ──► Belief ──BeliefGrid──► Replanner ──/blueboat/update_path──► Control ──► boat
-                                                   ▲   ▲                                  │
-                                      mission file ┘   └── path progress, events, odom ───┘
-```
+> **Caveats.** The Replanner has **never run on the boat**, and has run in Gazebo once (one C2
+> development run). The belief map's scores are not probabilities until a calibrated detector exists,
+> so every decision built on them depends on placeholder scores, and every result is
+> model-conditional.
 
-- **Belief's `BeliefGrid` is the only target evidence.** The Replanner never reads detections,
-  sonar data, simulation ground truth or `/sim/*`.
-- **`/blueboat/update_path` is the only way it moves the boat.** It replaces the rest of the
-  path from a change point; a refused request changes nothing.
-- In simulation, Control's node must be started in replanner mode:
-  `full_mission_launch.py path_source:=replanner` (BlueBoat-SSS-Sim). It then holds the boat at
-  the spawn pose until the first accepted path.
+## What you can do with it
 
-## Survey conditions
+- **Run a survey in one of seven conditions** (table below) on one mission area, with the same time
+  budget for all.
+- **Revisit possible targets during the survey** (condition C4), choosing the look direction that adds
+  the most information.
+- **Compare strategies** in a development loop without ROS, on the belief map's own core, with an
+  emulated detector and seeded synthetic worlds.
+- **Emulate the detector** in simulation and tests, from a world's true objects.
+- **Stop safely**: the planner never starts by itself, and an operator override disarms it.
 
 | Condition | What it does |
 |---|---|
-| `C1` | single pass |
-| `C2` | two passes at right angles: **the baseline**, tuned and frozen first (`config/c2_tuned.yaml`) |
-| `C3` | C2, with one revisit of each contact inserted after pass 1, perpendicular to its first detection (a simple heuristic) |
-| `C4` | informative: revisits chosen during the survey, with the look direction from an aspect model |
-| `C4_iso`, `C4_rand`, `C4_depth1` | ablations of C4: no aspect model; a pre-drawn random bearing; one-step lookahead |
+| `C1` | Single pass |
+| `C2` | Two passes at right angles: **the baseline**, tuned and frozen first (`config/c2_tuned.yaml`) |
+| `C3` | C2, with one revisit of each contact after pass 1, at right angles to its first detection (a simple rule) |
+| `C4` | Informative: revisits chosen during the survey, with the look direction from an aspect model |
+| `C4_iso`, `C4_rand`, `C4_depth1` | Variants of C4 that remove one ingredient: no aspect model; a random look direction; a one-step look-ahead |
 
-All conditions get the same time budget: the duration of the C2 plan.
+## How it connects to the other modules
 
-## Prerequisites
-
-- ROS 2 Jazzy, workspace `~/ros2_ws`.
-- `blueboat_interfaces` (BlueBoat-Control) and `blueboat_belief_interfaces` (BlueBoat-Belief).
-- At run time, Belief's `belief_map` node and Control's `master_control` (or the simulator).
-- For the development loop only: `blueboat_belief` (its core is imported) and `vision_msgs`.
-- Python: `numpy`, `PyYAML`.
-
-## Build
-
-From `~/ros2_ws`, in a shell that has not sourced the venv:
-
-```bash
-cd ~/ros2_ws
-colcon build --packages-select blueboat_interfaces blueboat_belief_interfaces   # first
-colcon build --packages-select blueboat_replanner
-source install/setup.bash
+```
+sonar ──► Perception ──► Belief ──BeliefGrid──► [ Replanner ] ──/blueboat/update_path──► Control ──► boat
+                                                   ▲   ▲                                     │
+                                      mission file ┘   └── path progress, events, odometry ──┘
 ```
 
-## Run
-
-```bash
-# start the node (in Gazebo add: use_sim_time:=true time_source:=ros)
-ros2 launch blueboat_replanner replanner_launch.py mission_file:=/abs/path/mission.yaml
-
-# arm the mission: the node never starts by itself
-ros2 service call /replanner/start std_srvs/srv/Trigger {}
-
-# stop: truncate the path and hold
-ros2 service call /replanner/stop std_srvs/srv/Trigger {}
-```
-
-Launch arguments (`replanner_launch.py`):
-
-| Argument | Default | Meaning |
+| Module | Link | Relation to the Replanner |
 |---|---|---|
-| `mission_file` | required | absolute path to the mission file |
-| `config_file` | `""` (built-in defaults, as in `config/replanner.yaml`) | planner parameter overrides (`replanner:` block) |
-| `c2_tuned_file` | `""` (installed `config/c2_tuned.yaml`) | the C2 freeze applied to every mission |
-| `data_dir` | `""` | data root for run records |
-| `belief_topic` | `/belief_map/belief_grid` | where the grid comes from |
-| `tick_hz` | `5.0` | node tick rate |
-| `use_sim_time` | `false` | `true` in Gazebo |
-| `time_source` | `wall` | `ros` in Gazebo (with `use_sim_time:=true`) |
+| BlueBoat-Belief | [github.com/Kyyrron/BlueBoat-Belief](https://github.com/Kyyrron/BlueBoat-Belief) | Its `BeliefGrid` is the **only** target evidence the Replanner reads |
+| BlueBoat-Control | [github.com/Kyyrron/BlueBoat-Control](https://github.com/Kyyrron/BlueBoat-Control) | The live path update `/blueboat/update_path` is the only way the Replanner moves the boat |
+| BlueBoat-SSS-Sim | [github.com/Kyyrron/BlueBoat-SSS-Sim](https://github.com/Kyyrron/BlueBoat-SSS-Sim) | Gazebo worlds; start them with `full_mission_launch.py path_source:=replanner` |
+| BlueBoat-Perception | [github.com/Kyyrron/BlueBoat-Perception](https://github.com/Kyyrron/BlueBoat-Perception) | The detector, read only through Belief; the emulator stands in for it in tests |
+| BlueBoat-MCS | [github.com/Kyyrron/BlueBoat-MCS](https://github.com/Kyyrron/BlueBoat-MCS) | Its geodesy is checked to be identical to the Replanner's |
+| Whole project | [github.com/Kyyrron/BlueBoat-SideScanSonar](https://github.com/Kyyrron/BlueBoat-SideScanSonar) | The superproject that holds every module |
 
-Safety behaviour:
-- No autonomous start: only `/replanner/start` arms a mission.
-- Operator override or E-STOP disarms the Replanner. It re-arms only through `/replanner/start`.
-- `/replanner/stop` returning success means the stop was *requested*. Only
-  `/replanner/status` reports whether it took effect (`stopped_holding`).
+The Replanner never reads detections, sonar data or simulation ground truth. A path request that
+Control refuses changes nothing.
 
-### Mission file
+## Dependencies
 
-One WGS-84 polygon, a condition and the planning depth. It must lie inside Belief's survey area.
-Example: `blueboat_replanner/config/mission_example.yaml`.
-
-```yaml
-mission:
-  name: my_survey
-  condition: C2            # C1 | C2 | C3 | C4 | C4_iso | C4_rand | C4_depth1
-  areas:
-    - [[lat, lon], [lat, lon], [lat, lon], [lat, lon]]
-  config:
-    planning_depth_m: 2.0  # required
-```
-
-Unknown keys are refused. Do not repeat the C2 freeze settings in a mission; a different value
-refuses the mission.
-
-### Detection emulator (simulation and tests only)
-
-Runs **instead of** Perception, never beside it. It publishes emulated detections from the
-world's true objects.
-
-```bash
-ros2 launch blueboat_replanner emulator_launch.py world_dir:=$HOME/worlds/<path>/<world> seed:=1
-```
-
-## Topics
-
-| Name | Kind | Type |
+| Dependency | Link | Quick install |
 |---|---|---|
-| `/belief_map/belief_grid` | sub | `blueboat_belief_interfaces/BeliefGrid` (latched) |
-| `/blueboat/path_progress` | sub | `std_msgs/String` (JSON, from Control) |
-| `/blueboat/path_update_event` | sub | `std_msgs/String` (JSON, from Control) |
-| `/blueboat/odom` | sub | `nav_msgs/Odometry` |
-| `/blueboat/update_path` | service client | `blueboat_interfaces/srv/UpdatePath` |
-| `/replanner/plan` | pub | `nav_msgs/Path` (the path Control holds; display) |
-| `/replanner/decision` | pub | `std_msgs/String` (JSON, one record per decision) |
-| `/replanner/status` | pub | `std_msgs/String` (JSON, 1 Hz and on change) |
-| `/replanner/start`, `/replanner/stop` | services | `std_srvs/Trigger` |
+| Ubuntu 24.04, ROS 2 Jazzy | [docs.ros.org](https://docs.ros.org/en/jazzy/Installation/Ubuntu-Install-Debs.html) | `sudo apt install ros-jazzy-desktop` |
+| `blueboat_interfaces` | [BlueBoat-Control](https://github.com/Kyyrron/BlueBoat-Control) | built in the same workspace |
+| `blueboat_belief_interfaces` (and `blueboat_belief` for the development loop) | [BlueBoat-Belief](https://github.com/Kyyrron/BlueBoat-Belief) | built in the same workspace |
+| numpy, PyYAML | | `sudo apt install python3-numpy python3-yaml` |
+| `vision_msgs` (development loop only) | apt | `sudo apt install ros-jazzy-vision-msgs` |
 
-QoS, JSON schemas and files: `docs/topics.md`.
+At run time it needs Belief's `belief_map` node and Control's `master_control` (or the simulator).
 
-## Configuration
-
-- `config/replanner.yaml`: every planner parameter with its unit and whether it is a user
-  decision, a repository fact, from literature, or a **placeholder**. Unknown keys raise.
-- A mission file's `config:` block overrides it for that mission.
-- `config/c2_tuned.yaml`: the frozen C2 baseline (spacing, first-pass direction, interlace).
-- Key defaults: speed 0.5 m/s, sonar range 20 m, turn radius 3 m. The aspect-model values in
-  `classes:` are placeholders.
-- `class_families` (detector class → aspect family) is empty on purpose: the owner decides it.
-
-## Outputs on disk
-
-Each run gets a write-once folder `<root>/data/Replanner_data/<date-time>-<mission>-<condition>/`
-(manifest, mission copy, every plan, decisions, requests, status, events, end record). The root
-is `data_dir`, else `$BLUEBOAT_DATA_DIR`, else the workspace (normally `~/ros2_ws`).
-
-## Tests and development loop
+## Installation, step by step
 
 ```bash
-cd BlueBoat-Replanner/blueboat_replanner && python3 -B -m test.smoke_test   # offline gate, no ROS (~90 s)
-BlueBoat-Replanner/.claude/tools/devloop_batches.sh     # dev loop on Belief's core (~45 min, 4 workers)
-BlueBoat-Replanner/.claude/tools/ros_check.sh           # scratch build + nodes on an isolated ROS domain (~28 min)
+# 1. Get the project with its submodules (or clone https://github.com/Kyyrron/BlueBoat-Replanner alone)
+mkdir -p ~/ros2_ws/src && cd ~/ros2_ws/src
+git clone --recurse-submodules https://github.com/Kyyrron/BlueBoat-SideScanSonar.git
+
+# 2. Build, from a terminal that has NOT activated the venv: the interfaces first
+cd ~/ros2_ws && source /opt/ros/jazzy/setup.bash
+colcon build --packages-select blueboat_interfaces blueboat_belief_interfaces
+colcon build --packages-select blueboat_belief blueboat_replanner
+
+# 3. Every new terminal
+cd ~/ros2_ws && source env.sh       # env.sh: "source .venv/bin/activate" + "source install/setup.bash"
 ```
 
-- `colcon test --packages-select blueboat_replanner` also runs the gate.
-- Some gate sections need the BlueBoat-Belief, BlueBoat-MCS and BlueBoat-Control checkouts beside
-  this repository. Each skips visibly when its neighbour is missing.
-- The **development loop** (`eval/`) runs without ROS: Belief's own core, a seeded synthetic
-  world, an emulated detector, a boat that tracks the plan perfectly. Its numbers are
-  **preliminary** and never a thesis result. Method and results: `docs/DEVLOOP.md`.
-- Before a long run, check that no simulation is being recorded: `pgrep -af 'record_ru[n]\.py'`.
+## Check the installation
 
-## Status
+```bash
+# 1. The offline test gate (no ROS, about 90 s)
+cd ~/ros2_ws/src/BlueBoat-SideScanSonar/BlueBoat-Replanner/blueboat_replanner
+python3 -B -m test.smoke_test
 
-- Built: planning core, executor, ROS node, emulator node, launch files. Offline gate green.
-- Run on an isolated ROS graph beside Belief's node with made-up inputs.
-- Run once in Gazebo: a C2 development run in a built world, first path accepted and flown to
-  the end.
-- **Not yet:** C4 or the stop test in Gazebo, a trained detector, the boat.
-
-Where the work stands and what comes next: `docs/HANDOVER.md`. Open items: `.claude/TODO.md`.
-Simulated results follow the superproject's `SIM_VALIDITY_CONDITIONS.md`.
-
-## Layout
-
-```
-blueboat_replanner/                 ament_python package
-  blueboat_replanner/core/          planning: no ROS, no clock, no randomness
-  blueboat_replanner/io/            mission file, trajectory export, run records
-  blueboat_replanner/ros/           adapters, executor (the only code that calls update_path), replanner_node
-  blueboat_replanner/eval/          dev loop: Belief binding, world, emulator, Control stub, runner
-  config/                           replanner.yaml, c2_tuned.yaml, mission_example.yaml
-  launch/                           replanner_launch.py, emulator_launch.py
-  test/                             smoke_test.py + gate/, test_gate.py, ros_graph_check.py
-docs/                               see below
-results/                            dev-loop outputs
+# 2. The launch file is installed and lists its arguments
+cd ~/ros2_ws && source env.sh
+ros2 launch blueboat_replanner replanner_launch.py --show-args
 ```
 
-## Documents (`docs/`)
+## Tips: when to use it, what to know
 
-| File | Content |
+- **Start order**: the simulation or the boat, then Belief, then the Replanner, then arm it with
+  `ros2 service call /replanner/start std_srvs/srv/Trigger {}`. It never starts by itself.
+- **In Gazebo, start Control in replanner mode** (`path_source:=replanner`): it holds the boat at the
+  start until the first path is accepted. Add `use_sim_time:=true time_source:=ros` to the Replanner.
+- **An operator override or an emergency stop disarms the Replanner.** Only `/replanner/start`
+  re-arms it.
+- **"Stop requested" is not "stopped"**: only `/replanner/status` saying `stopped_holding` means the
+  boat holds.
+- **The mission area must lie inside Belief's survey area**, and the boat must be inside the area
+  before `/replanner/start`.
+- **The development loop's numbers are preliminary**: an emulated detector, a boat that tracks the
+  plan perfectly, placeholder models. Never a thesis result.
+- **Compare conditions paired** (same world, seeds and sea), and treat a time difference within
+  3 % plus 0.6 s per turn as no difference (superproject `SIM_VALIDITY_CONDITIONS.md`).
+- **Do not load the machine while a simulation is being recorded**: check
+  `pgrep -af 'record_ru[n]\.py'` before a long development run.
+
+![Development-loop score against the share of the time budget used](results/devloop_real_2026-11-12/main/anytime.png)
+
+*Development loop only, preliminary: the mean score (targets confirmed minus false confirmations) of
+each condition over 30 paired synthetic worlds, as the time budget is used. In this loop the adaptive
+conditions lead mid-survey; at the full budget none is clearly better than C2, and the aspect model
+shows no effect (C4 equals C4_iso). Details: [docs/DEVLOOP.md](docs/DEVLOOP.md).*
+
+## More documentation
+
+| Document | What you find there |
 |---|---|
-| `HANDOVER.md` | where the work stands, owner decisions, next steps |
-| `REPORT.md` | what was built and how much weight each claim carries |
-| `DESIGN.md` | design, and the scientific background (§13) |
-| `MATH.md` | the mathematics |
-| `topics.md` | every topic, service, JSON schema and file |
-| `CONTRACT_CONSUMED.md`, `REAL_BELIEF_BINDING.md` | how Belief's grid is read; how Belief's core is driven offline |
-| `DEVLOOP.md` | development loop method and results |
-| `C2_TUNING_PROTOCOL.md`, `C2_TUNING_RESULT.md` | how the baseline was tuned and frozen |
-| `LOCAL_CHECKLIST.md` | every ROS, Gazebo and boat check, with its command |
-| `EVIDENCE_REGISTER.md`, `REQUESTS.md` | evidence ids; requests to other modules |
-| `REPLANNER_BRIEF.md` | the original specification |
+| [docs/USER_GUIDE.md](docs/USER_GUIDE.md) | Running the node, the mission file, start and stop, the emulator, settings, topics, outputs |
+| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | How to work on the Replanner: Claude Code, setup, tests, rules, next steps |
+| [docs/HANDOVER.md](docs/HANDOVER.md) | Where the work stands, the owner's decisions, what comes next |
+| [docs/REPORT.md](docs/REPORT.md) | What was built, and how much weight each claim carries |
+| [docs/DESIGN.md](docs/DESIGN.md) | The design and the scientific background |
+| [docs/MATH.md](docs/MATH.md) | The mathematics |
+| [docs/topics.md](docs/topics.md) | Every topic, service, JSON schema and file |
+| [docs/DEVLOOP.md](docs/DEVLOOP.md) | The development loop: method and results |
+| [docs/C2_TUNING_PROTOCOL.md](docs/C2_TUNING_PROTOCOL.md), [docs/C2_TUNING_RESULT.md](docs/C2_TUNING_RESULT.md) | How the baseline was tuned and frozen |
+| [docs/LOCAL_CHECKLIST.md](docs/LOCAL_CHECKLIST.md) | Every ROS, Gazebo and boat check, with its command |
+| [docs/CONTRACT_CONSUMED.md](docs/CONTRACT_CONSUMED.md), [docs/REAL_BELIEF_BINDING.md](docs/REAL_BELIEF_BINDING.md) | How the belief map is read; how Belief's core is driven offline |
+| [docs/EVIDENCE_REGISTER.md](docs/EVIDENCE_REGISTER.md), [docs/REQUESTS.md](docs/REQUESTS.md) | Evidence identifiers; requests to other modules |
+| [docs/REPLANNER_BRIEF.md](docs/REPLANNER_BRIEF.md) | The original specification |
